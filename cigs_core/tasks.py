@@ -1,5 +1,6 @@
 # cigs_core/tasks.py
 import os
+import sys
 import requests
 import subprocess
 import glob
@@ -40,20 +41,17 @@ def sanitizar_extracao(destino):
     except Exception as e:
         log_debug(f"Erro na sanitizacao: {e}")
 
-def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start_in, sistema, modo):
-    log_debug(f"--- Nova Missao ({modo}): {sistema} ---")
+def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start_in, sistema, modo, script_nome="Executa.bat", script_args=""):
+    log_debug(f"--- Missao: {sistema} | Script: {script_nome} | Args: {script_args} ---")
     ajustar_permissoes()
     
-    # Define pasta de destino correta (...\Atualizadores\AC)
-    # Se start_in vier vazio, calcula. Se vier, usa ele (flexibilidade).
     pasta_destino = start_in if start_in else get_caminho_atualizador(sistema)
-    
-    if not pasta_destino: return False, "Caminho do sistema não encontrado."
-    if not os.path.exists(pasta_destino):
+    if not pasta_destino: return False, "Caminho invalido"
+    if not os.path.exists(pasta_destino): 
         try: os.makedirs(pasta_destino)
         except: pass
 
-    # 1. Download (Se modo COMPLETO)
+    # 1. Download
     caminho_arq = os.path.join(PASTA_DOWNLOAD, nome_arquivo)
     if modo == "COMPLETO":
         if not os.path.exists(PASTA_DOWNLOAD): os.makedirs(PASTA_DOWNLOAD)
@@ -65,75 +63,63 @@ def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start
             else: return False, f"HTTP {r.status_code}"
         except Exception as e: return False, f"Download: {e}"
     
-    # 2. Gerar BAT (Com Correção Automática)
+    # 2. Gerar BAT Dinâmico
     bat_path = os.path.join(PASTA_BASE, f"Launcher_{sistema}.bat")
     log_bat = r"%TEMP%\cigs_exec.log"
     raiz_sis = MAPA_RAIZ.get(sistema.upper())
-    exec_bat = os.path.join(raiz_sis, "Executa.bat")
+    
+    # Define o script alvo com base na escolha da central
+    target_bat = os.path.join(raiz_sis, script_nome)
     
     cmd_extrai = ""
     cmd_sanitize = ""
-    
     if modo == "COMPLETO" and nome_arquivo.lower().endswith(".rar"):
-        # Extração
         cmd_extrai = f'"{UNRAR_PATH}" x -y -o+ "{caminho_arq}" "{pasta_destino}\\" >> "{log_bat}"\n'
-
-        # Sanitização: Chama o próprio Agente para arrumar a pasta IMEDIATAMENTE após extrair
-        agente_exe = sys.executable # Caminho do CIGS_Agent.exe
+        agente_exe = sys.executable
         cmd_sanitize = f'"{agente_exe}" --sanitize "{pasta_destino}" >> "{log_bat}"\n'
 
-    # Montagem do Script
-    conteudo_bat = f"""@echo off
-echo [%date% %time%] Inicio Missao >> "{log_bat}"
+    # Comando de chamada com argumentos (Ataque Cirúrgico)
+    # Ex: call "C:\...\ExecutaOnDemand.bat" 1,2,3
+    comando_final = f'call "{target_bat}" {script_args} >> "{log_bat}"'
 
-REM 1. Extrair Arquivos
-{cmd_extrai}
-
-REM 2. Corrigir Pastas (Sanitizacao)
-{cmd_sanitize}
-
-REM 3. Executar Atualizacao (Executa.bat)
-if exist "{exec_bat}" (
-    cd /d "{raiz_sis}"
-    call "{exec_bat}" >> "{log_bat}"
-) else (
-    echo ERRO: Executa.bat nao encontrado em {raiz_sis} >> "{log_bat}"
-)
-exit
-"""
-    
     conteudo_bat = f"""@echo off
 echo [%date% %time%] Inicio >> "{log_bat}"
 {cmd_extrai}
-if exist "{exec_bat}" (
+{cmd_sanitize}
+if exist "{target_bat}" (
     cd /d "{raiz_sis}"
-    call "{exec_bat}" >> "{log_bat}"
+    {comando_final}
 ) else (
-    echo ERRO: Executa.bat nao achado em {raiz_sis} >> "{log_bat}"
+    echo ERRO: Script {script_nome} nao encontrado em {raiz_sis} >> "{log_bat}"
 )
 exit
 """
-    
     try:
         with open(bat_path, 'w') as f: f.write(conteudo_bat)
-    except: return False, "Erro ao criar BAT"
+    except: return False, "Erro criar BAT"
 
-    # 3. Agendar
+    # 3. Agendar (COM NOME FIXO PARA NÃO POLUIR)
     try:
         d, h = data_hora.split(" ")
-        task = f"CIGS_{sistema}_{datetime.now().strftime('%H%M%S')}" # Nome curto
-        c = f'schtasks /create /tn "{task}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
         
-        res = subprocess.run(c, shell=True, capture_output=True, text=True)
-        if res.returncode == 0: 
-            return True, f"Agendado {h}"
+        # PADRÃO DE NOME: CIGS_Atualizacao_[Modo]_[Sistema]
+        # Ex: CIGS_Atualizacao_Full_AC ou CIGS_Atualizacao_EXE_PONTO
+        sufixo = "Full" if modo == "COMPLETO" else "EXE"
+        task_name = f"CIGS_Atualizacao_{sufixo}_{sistema.upper()}"
+        
+        # /F força a sobrescrita da tarefa existente (Reaproveitamento)
+        cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
+        
+        res = subprocess.run(cmd_sch, shell=True, capture_output=True, text=True)
+        if res.returncode == 0: return True, f"Agendado: {task_name}"
         
         # Fallback SYSTEM
-        c2 = f'schtasks /create /tn "{task}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru SYSTEM /rl HIGHEST /f'
-        if subprocess.run(c2, shell=True).returncode == 0: return True, "Agendado (SYSTEM)"
+        cmd_sys = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru SYSTEM /rl HIGHEST /f'
+        if subprocess.run(cmd_sys, shell=True).returncode == 0: return True, f"Agendado SYSTEM: {task_name}"
         
         return False, f"Falha Task: {res.stderr}"
     except Exception as e: return False, str(e)
+
 
 def analisar_log_backup(sistema, data_alvo=None):
     # Função que estava no seu código original e foi restaurada

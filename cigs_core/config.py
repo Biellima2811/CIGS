@@ -2,7 +2,7 @@
 import os
 
 PORTA = 5578
-VERSAO_AGENTE = "v2.0 (Precision Modular)"
+VERSAO_AGENTE = "v2.7.5 (Fix Count)"
 
 # Caminhos Base
 PASTA_BASE = r'C:\CIGS'

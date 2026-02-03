@@ -119,9 +119,11 @@ class CIGSApp:
         
         ttk.Label(f_act, text='© 2026 Gabriel Levi · Fortes Tecnologia').grid(row=0, column=0, sticky="w", padx=5)
         
-        tk.Button(f_act, text="📡 Scanear Infra", command=self.btn_scanear).grid(row=0, column=1, padx=5)
-        tk.Button(f_act, text="🚀 PREPARAR MISSÃO (Checklist)", command=self.pre_flight_checklist, 
-                  bg="#27ae60", fg="white", font=("Arial", 10, "bold"), padx=10).grid(row=0, column=2, padx=5)
+        # Botões alinhados à direita
+        tk.Button(f_act, text="📊 Ver Relatório", command=self.btn_relatorio_final).grid(row=0, column=1, padx=5)
+        tk.Button(f_act, text="📡 Scanear Infra", command=self.btn_scanear).grid(row=0, column=2, padx=5)
+        tk.Button(f_act, text="🚀 DISPARAR MISSÃO (Checklist)", command=self.pre_flight_checklist, 
+                  bg="#27ae60", fg="white", font=("Arial", 10, "bold"), padx=10).grid(row=0, column=3, padx=5)
 
     def show_page(self, name):
         self.pages[name].tkraise()
@@ -250,7 +252,8 @@ class CIGSApp:
                 tag = "ONLINE"; on+=1
                 if h_model != "N/A" and res.get('hash') != h_model:
                     tag = "CRITICO"; st = "⚠️ vDIF"; crit+=1
-                cli = cli_orig if cli_orig not in ["-","..."] else res.get('clientes','-')
+                cli = res.get('clientes', '-')
+                # cli = cli_orig if cli_orig not in ["-","..."] else res.get('clientes','-')
             else:
                 off+=1; cli = cli_orig
             

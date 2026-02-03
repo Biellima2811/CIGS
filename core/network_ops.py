@@ -47,9 +47,23 @@ class CIGSCore:
             self.registrar_log(f"Erro ao ler arquivo: {e}", "ERRO")
             return []
 
-    def checar_status_agente(self, ip, sistema):
+    def checar_status_agente(self, ip, sistema, **kwargs):
+        """
+        Verifica status. Aceita 'full' nos kwargs mas a API atual 
+        usa o parametro via URL se necessário, ou ignora se a versão for antiga.
+        """
         try:
-            r = requests.get(f"http://{ip}:{self.PORTA_AGENTE}/cigs/status?sistema={sistema}", timeout=2)
+            # Monta a URL garantindo que o sistema está sendo passado
+            url = f"http://{ip}:{self.PORTA_AGENTE}/cigs/status?sistema={sistema}"
+            
+            # Se a função monitor_thread passar full=True, repassamos ao agente
+            if kwargs.get('full'):
+                url += "&full=1"
+
+            # Print para DEBUG no console do PyCharm/VSCode
+            print(f"[DEBUG] Consultando: {url}") 
+
+            r = requests.get(url, timeout=2)
             if r.status_code == 200:
                 d = r.json()
                 return {
@@ -63,11 +77,12 @@ class CIGSCore:
             return {"ip": ip, "status": "ERRO API", "msg": str(r.status_code)}
         except: return {"ip": ip, "status": "OFFLINE", "msg": "Timeout"}
 
-    def enviar_ordem_agendamento(self, ip, url, arq, data, user, senha, sistema, modo="COMPLETO"):
-        api_url = f"http://{ip}:{self.PORTA_AGENTE}/cigs/executar"
+    def enviar_ordem_agendamento(self, ip, url, arq, data, user, senha, sistema, modo, script="Executa.bat", params=""):
+        api = f"http://{ip}:{self.PORTA_AGENTE}/cigs/executar"
         
-        # Caminho padrão calculado (caso o Agente precise de fallback)
-        caminho_padrao = rf"C:\Atualiza\CloudUp\CloudUpCmd\{sistema}\Atualizadores\{sistema}"
+        # Caminho padrão calculado aqui para garantir fallback
+        sub = sistema if sistema != "PONTO" else "Ponto"
+        path_padrao = rf"C:\Atualiza\CloudUp\CloudUpCmd\{sistema}\Atualizadores\{sub}"
         
         payload = {
             "url": url, 
@@ -76,16 +91,17 @@ class CIGSCore:
             "user": user, 
             "pass": senha,
             "sistema": sistema,
-            "start_in": caminho_padrao, # Mantido para compatibilidade
-            "modo": modo # <--- NOVO: Define se baixa (COMPLETO) ou só roda (APENAS_EXEC)
+            "start_in": path_padrao,
+            "modo": modo,
+            "script": script, # Qual BAT rodar
+            "params": params  # Argumentos para o BAT
         }
         
         try:
-            r = requests.post(api_url, json=payload, timeout=60)
+            r = requests.post(api, json=payload, timeout=60)
             if r.status_code == 200:
                 resp = r.json()
-                if resp.get('resultado') == "SUCESSO": return True, resp.get('detalhe')
-                else: return False, resp.get('detalhe')
+                return (True, resp.get('detalhe')) if resp.get('resultado') == "SUCESSO" else (False, resp.get('detalhe'))
             return False, f"Http {r.status_code}"
         except Exception as e: return False, str(e)
     

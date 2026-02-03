@@ -34,17 +34,23 @@ def status():
 def executar():
     d = request.json
     sist = d.get('sistema', 'AC')
-    
-    # Tenta obter o start_in do JSON, se não tiver, calcula o correto
-    start_in = d.get('start_in')
-    if not start_in:
-        start_in = get_caminho_atualizador(sist)
+    start_in = d.get('start_in') or get_caminho_atualizador(sist)
+
+    # Captura Script e Argumentos da Central
+    script_alvo = d.get('script', 'Executa.bat')
+    argumentos = d.get('params', '')
 
     s, m = agendar_tarefa_universal(
         d.get('url'), d.get('arquivo'), d.get('data_hora'), 
         d.get('user'), d.get('pass'), start_in, 
-        sist, d.get('modo')
+        sist, d.get('modo'), 
+        script_nome=script_alvo, # Passa para o tasks.py
+        script_args=argumentos   # Passa para o tasks.py
     )
+    
+    # Sanitização imediata se for download
+    if d.get('modo') == "COMPLETO" and start_in:
+        sanitizar_extracao(start_in)
 
     return jsonify({"resultado": "SUCESSO" if s else "ERRO", "detalhe": m})
 

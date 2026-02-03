@@ -81,8 +81,10 @@ class CIGSApp:
         # 4. RODAPÉ
         frame_bot = ttk.Frame(self.root, padding=10)
         frame_bot.grid(row=3, column=0, sticky="ew")
-        for i in range(5): frame_bot.columnconfigure(i, weight=1)
         
+        ttk.Label(frame_bot, text='© 2026 Gabriel Levi · Direitos Reservados · Uso somente interno· Fortes Tecnologia').grid(row=1, column=0, columnspan=5, pady=5)
+        
+        for i in range(5): frame_bot.columnconfigure(i, weight=1)
         ttk.Button(frame_bot, text="📡 1. Scanear Infra", command=self.btn_scanear).grid(row=0, column=0, padx=5, sticky="ew")
         ttk.Button(frame_bot, text="🚀 2. Disparar Missão", command=self.btn_disparar).grid(row=0, column=1, padx=5, sticky="ew")
         ttk.Button(frame_bot, text="📊 3. Relatório Completo", command=self.btn_relatorio_final).grid(row=0, column=2, padx=5, sticky="ew")
@@ -90,7 +92,6 @@ class CIGSApp:
         btn_abort = tk.Button(frame_bot, text="🛑 ABORTAR TUDO", command=self.btn_abortar, bg="#c0392b", fg="white", font=("Arial", 9, "bold"))
         btn_abort.grid(row=0, column=3, padx=5, sticky="ew")
 
-        ttk.Label(frame_bot, text='© 2026 Gabriel Levi · Direitos Reservados · Uso somente interno· Fortes Tecnologia').grid(row=1, column=0, columnspan=5, pady=5)
 
     # --- LÓGICA DE NEGÓCIO ---
 
