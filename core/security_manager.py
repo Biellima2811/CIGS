@@ -1,25 +1,40 @@
+# Importa o módulo 'os' para manipulação de arquivos e diretórios
 import os
+# Importa o módulo 'json' para trabalhar com dados no formato JSON
 import json
+# Importa a classe Fernet da biblioteca 'cryptography' para criptografia simétrica
 from cryptography.fernet import Fernet
 
+# Define a classe responsável pela segurança e armazenamento criptografado
 class CIGSSecurity:
     def __init__(self):
+        # Nome do arquivo onde as credenciais criptografadas serão salvas
         self.arquivo_config = 'CIGS_secrets.dat'
+        # Nome do arquivo onde a chave de criptografia será armazenada
         self.arquivo_chave = 'CIGS.key'
+        # Chama o método que carrega ou cria a chave de criptografia
         self.carregar_chave()
     
     def carregar_chave(self):
         """Carrega ou cria uma chave de criptografia única para este PC/Instalação"""
+        # Verifica se o arquivo da chave já existe
         if not os.path.exists(self.arquivo_chave):
+            # Se não existir, gera uma nova chave de criptografia
             self.chave = Fernet.generate_key()
+            # Abre o arquivo da chave em modo de escrita binária
             with open(self.arquivo_chave, 'wb') as k:
+                # Escreve a chave gerada dentro do arquivo
                 k.write(self.chave)
         else:
+            # Se o arquivo já existir, abre em modo leitura binária
             with open(self.arquivo_chave, 'rb') as k:
+                # Lê a chave existente do arquivo
                 self.chave = k.read()
+        # Cria um objeto Fernet com a chave carregada para criptografar/descriptografar
         self.fernet = Fernet(self.chave)
     
     def salvar_credenciais(self, email, senha, smtp_server, smtp_port):
+        # Cria um dicionário com os dados de login e servidor
         dados = {
             'email' : email,
             'senha' : senha,
@@ -27,24 +42,32 @@ class CIGSSecurity:
             'port' : smtp_port
         }
 
-        # Transforma em Json -> Bytes -> Criptografa
+        # Converte o dicionário em JSON -> transforma em bytes -> criptografa
         dados_json = json.dumps(dados).encode()
         dados_cripto = self.fernet.encrypt(dados_json)
 
+        # Abre o arquivo de configuração em modo escrita binária
         with open(self.arquivo_config, 'wb') as f:
+            # Escreve os dados criptografados no arquivo
             f.write(dados_cripto)
+        # Retorna True indicando que o processo foi concluído com sucesso
         return True
 
     def obter_credenciais(self):
+        # Verifica se o arquivo de configuração existe
         if not os.path.exists(self.arquivo_config):
+            # Se não existir, retorna None (nenhuma credencial salva)
             return None
         
         try:
+            # Abre o arquivo de configuração em modo leitura binária
             with open(self.arquivo_config, 'rb') as f:
+                # Lê os dados criptografados do arquivo
                 dados_cripto = f.read()
 
-            # Descriptografa -> Bytes -> JSON
+            # Descriptografa os dados -> transforma em string -> carrega como JSON
             dados_json = self.fernet.decrypt(dados_cripto).decode()
             return json.loads(dados_json)
         except:
-            return None # Se a chave for errada ou arquivo corrompido
+            # Se ocorrer erro (chave errada ou arquivo corrompido), retorna None
+            return None
