@@ -1,4 +1,4 @@
-Markdown# 🐆 CIGS - Central de Comandos Integrados (v2.6)
+🐆 CIGS - Central de Comandos Integrados (v2.6)
 
 > **"A selva nos une, a tecnologia nos protege."**
 
@@ -112,3 +112,4 @@ Use este diagrama para se localizar rapidamente. Se algo der errado, vá direto 
     * Escreve no BAT: "Extraia -> Rode `CIGS_Agent --sanitize` -> Rode `call Executa.bat`".
     * Roda comando `schtasks /create ... /tn "CIGS_Full_AC"`.
 6.  **Windows:** Executa a tarefa agendada.
+
