@@ -17,7 +17,7 @@ from .utils import log_debug, ajustar_permissoes, get_self_hash, contar_clientes
 from .database import executar_check_banco
 
 # Importa tarefas executadas pelo agente
-from .tasks import agendar_tarefa_universal, analisar_log_backup, cancelar_missao, sanitizar_extracao
+from .tasks import agendar_tarefa_universal, analisar_relatorio_deploy, cancelar_missao, sanitizar_extracao
 
 # Cria a aplicação Flask
 app = Flask(__name__)
@@ -28,6 +28,10 @@ def status():
     # Lê o parâmetro 'sistema' da URL; padrão é 'AC'
     sis = request.args.get('sistema', 'AC')
 
+    # DEBUG NO LOG: Vamos ver quem está pedindo o quê
+    # Isso vai aparecer no CIGS_debug.log do servidor
+    log_debug(f"API /status chamada. Sistema solicitado: '{sis}'")
+    
     # Verifica se deve retornar dados completos (uso de disco e RAM)
     # 'full=1' ativa modo detalhado
     full = request.args.get('full', '0') == '1'
@@ -58,6 +62,7 @@ def status():
         "hash": get_self_hash(),
         "clientes": qtd,
         "ref": ref,
+        "sistema_lido": sis,
         "disk": d,
         "ram": m
     })
@@ -75,8 +80,10 @@ def executar():
     start_in = d.get('start_in') or get_caminho_atualizador(sist)
 
     # Script que a central deseja executar; padrão é "Executa.bat"
-    script_alvo = d.get('script', 'Executa.bat')
-
+    script_alvo = d.get('script')
+    # Se vier vazio ou None, usa o Padrão Executa.bat
+    if not script_alvo:
+        script_alvo = 'Executa.bat'
     # Argumentos adicionais para o script
     argumentos = d.get('params', '')
 
@@ -110,8 +117,9 @@ def check_db():
 # Rota que retorna relatório do backup
 @app.route('/cigs/relatorio', methods=['GET'])
 def relatorio():
-    # Chama a função que analisa logs do backup e retorna o JSON
-    return jsonify(analisar_log_backup(request.args.get('sistema', 'AC')))
+    sis = request.args.get('sistema', 'AC')
+    data = request.args.get('data') # YYYYMMDD
+    return jsonify(analisar_relatorio_deploy(sis, data))
 
 # Rota para abortar uma tarefa em execução
 @app.route('/cigs/abortar', methods=['POST'])

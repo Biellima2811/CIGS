@@ -47,8 +47,8 @@ class TopPanel(ttk.LabelFrame):
 
         ttk.Label(self, text="User (Admin):").grid(row=1, column=4, sticky="e")
         self.ent_user = ttk.Entry(self, width=15)
-        # Preenche com usuário padrão "Administrador"
-        self.ent_user.insert(0, "Administrador")
+        # Preenche com usuário padrão "fortes\parceiro"
+        self.ent_user.insert(0, r"fortes\parceiro")
         self.ent_user.grid(row=1, column=5, sticky="ew", padx=5)
 
         ttk.Label(self, text="Senha:").grid(row=1, column=6, sticky="e")

@@ -34,13 +34,14 @@ if __name__ == "__main__":
         Nesse caso, usamos a janela padrão do tkinter (sem tema especial)
         """
         root = tk.Tk()  # Cria janela tkinter padrão (fallback)
+        root.withdraw() # Esconde a janela cinza vazia
         
     # Instancia a aplicação CIGS passando a janela raiz como parâmetro
     app = CIGSApp(root)
     
-    # Inicia o loop principal de eventos da interface gráfica
-    # Este método fica em execução até que a janela seja fechada
-    root.mainloop()
+    if root.winfo_exists():
+        root.deiconify() # Mostra a janela principal agora que carregou
+        root.mainloop()
 
 # Fluxo de Execução:
 # -----------------

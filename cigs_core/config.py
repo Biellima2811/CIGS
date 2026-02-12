@@ -2,10 +2,10 @@
 import os
 
 # Define a porta onde o agente CIGS irá rodar
-PORTA = 5578
+PORTA = 5580
 
 # Define a versão atual do agente, usada para identificação e diagnóstico
-VERSAO_AGENTE = "v2.7.5 (Fix Count)"
+VERSAO_AGENTE = "v3.1 (Multi-System Fix)"
 
 # ================================
 #      Caminhos Base do Sistema

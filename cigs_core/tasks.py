@@ -55,135 +55,141 @@ def sanitizar_extracao(destino):
         log_debug(f"Erro na sanitizacao: {e}")
 
 def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start_in, sistema, modo, script_nome="Executa.bat", script_args=""):
-    # Log inicial da missão contendo sistema, script e argumentos enviados pela central
-    log_debug(f"--- Missao: {sistema} | Script: {script_nome} | Args: {script_args} ---")
-
-    # Ajusta permissões antes de executar ou criar arquivos
+    # Log inicial
+    log_debug(f"--- Missao: {sistema} | Script: {script_nome} ---", sistema)
+    
     ajustar_permissoes()
     
-    # Determina pasta onde os arquivos devem ser extraídos ou onde o script será executado
-    pasta_destino = start_in if start_in else get_caminho_atualizador(sistema)
+    # 1. DEFINIÇÃO RÍGIDA DE DESTINO (Correção do Conflito)
+    # Aqui garantimos que o caminho seja EXATAMENTE o que você quer
+    if sistema.upper() == "AC":
+        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\AC\Atualizadores\AC"
+    elif sistema.upper() == "AG":
+        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\AG\Atualizadores\AG"
+    elif sistema.upper() == "PONTO":
+        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\PONTO\Atualizadores\PONTO"
+    elif sistema.upper() == "PATRIO":
+        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\Patrio\Atualizadores\Patrio"
+    else:
+        # Se não for um desses, usa o padrão ou o start_in enviado
+        pasta_destino = start_in if start_in else get_caminho_atualizador(sistema)
 
-    # Se não houver caminho válido, retorna erro
     if not pasta_destino: return False, "Caminho invalido"
 
-    # Cria a pasta caso ela não exista
+    # Cria a pasta destino se não existir
     if not os.path.exists(pasta_destino): 
         try: os.makedirs(pasta_destino)
         except: pass
 
-    # =========================
-    # 1. DOWNLOAD DO ARQUIVO
-    # =========================
-    caminho_arq = os.path.join(PASTA_DOWNLOAD, nome_arquivo)
-
+    # ====================================================
+    # 2. OPERAÇÃO DE DOWNLOAD E EXTRAÇÃO (Python Nativo)
+    # ====================================================
     if modo == "COMPLETO":
-        # Garante que a pasta de downloads exista
+        # Garante pasta de downloads
         if not os.path.exists(PASTA_DOWNLOAD): os.makedirs(PASTA_DOWNLOAD)
+        caminho_rar = os.path.join(PASTA_DOWNLOAD, nome_arquivo)
 
+        # A) Download
         try:
-            # Faz requisição GET para baixar o arquivo
+            log_debug("Baixando pacote...", sistema)
             r = requests.get(url, stream=True, timeout=300)
-
             if r.status_code == 200:
-                # Salva o arquivo em modo binário
-                with open(caminho_arq, 'wb') as f:
-                    for c in r.iter_content(8192):
-                        f.write(c)
+                with open(caminho_rar, 'wb') as f:
+                    for c in r.iter_content(8192): f.write(c)
             else:
-                # Caso o servidor retorne erro HTTP
-                return False, f"HTTP {r.status_code}"
+                return False, f"HTTP Download {r.status_code}"
+        except Exception as e:
+            return False, f"Erro Download: {e}"
+
+        # B) Extração Inteligente (Anti-Subpasta)
+        try:
+            temp_extract = os.path.join(PASTA_BASE, "Temp_Install")
+            # Limpa temp antigo
+            if os.path.exists(temp_extract): shutil.rmtree(temp_extract, ignore_errors=True)
+            os.makedirs(temp_extract)
+
+            log_debug("Extraindo para temporario...", sistema)
+            # Extrai o RAR para a pasta Temp
+            subprocess.run(f'"{UNRAR_PATH}" x -y "{caminho_rar}" "{temp_extract}\\"', shell=True, stdout=subprocess.DEVNULL)
+
+            # --- LÓGICA DE CORREÇÃO DE PASTA ---
+            items = os.listdir(temp_extract)
+            source_folder = temp_extract
+            
+            # Se tiver apenas UMA pasta dentro (ex: "AtualizaPonto"), entra nela
+            if len(items) == 1 and os.path.isdir(os.path.join(temp_extract, items[0])):
+                source_folder = os.path.join(temp_extract, items[0])
+                log_debug(f"Subpasta detectada ({items[0]}). Ajustando origem.", sistema)
+
+            # Move os arquivos da origem correta para o Destino Final
+            log_debug(f"Movendo arquivos para: {pasta_destino}", sistema)
+            
+            # O comando xcopy /E /Y garante que vai substituir e manter a estrutura
+            cmd_copy = f'xcopy "{source_folder}\\*" "{pasta_destino}\\" /E /H /C /I /Y'
+            subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL)
+
+            # Limpeza final
+            shutil.rmtree(temp_extract, ignore_errors=True)
+            try: os.remove(caminho_rar)
+            except: pass
 
         except Exception as e:
-            # Em caso de erro na transferência
-            return False, f"Download: {e}"
-    
-    # ======================================
-    # 2. GERAR ARQUIVO BAT DINÂMICO
-    # ======================================
+            log_debug(f"Erro na Instalação: {e}", sistema)
+            return False, f"Erro Install: {e}"
 
-    # Caminho do arquivo BAT que será gerado e executado pelo agendador
+    # ======================================
+    # 3. GERAR BAT DE EXECUÇÃO (Apenas roda o script)
+    # ======================================
+    # Como já extraímos e movemos os arquivos, o BAT agora é simples.
+    
     bat_path = os.path.join(PASTA_BASE, f"Launcher_{sistema}.bat")
-
-    # Caminho para log temporário do processo
-    log_bat = r"%TEMP%\cigs_exec.log"
-
-    # Caminho raiz do sistema que vai executar o script
-    raiz_sis = MAPA_RAIZ.get(sistema.upper())
+    log_bat = r"C:\CIGS\execucao.log"
     
-    # Caminho completo do script que será chamado (Executa.bat, ExecutaOnDemand.bat, etc.)
-    target_bat = os.path.join(raiz_sis, script_nome)
+    # Monta o caminho do script alvo (ex: C:\...\AC\Executa.bat)
+    target_script = os.path.join(pasta_destino, script_nome)
     
-    cmd_extrai = ""
-    cmd_sanitize = ""
-
-    # Caso seja um .rar e modo COMPLETO, monta comandos de extração e sanitização
-    if modo == "COMPLETO" and nome_arquivo.lower().endswith(".rar"):
-        cmd_extrai = f'"{UNRAR_PATH}" x -y -o+ "{caminho_arq}" "{pasta_destino}\\" >> "{log_bat}"\n'
-
-        # Executável do agente Python em execução
-        agente_exe = sys.executable
-
-        # Linha para sanitizar (executa agente com flag --sanitize)
-        cmd_sanitize = f'"{agente_exe}" --sanitize "{pasta_destino}" >> "{log_bat}"\n'
-
-    # Comando final que chama o script desejado passando argumentos definidos pela central
-    comando_final = f'call "{target_bat}" {script_args} >> "{log_bat}"'
-
-    # Conteúdo completo do BAT gerado dinamicamente
     conteudo_bat = f"""@echo off
-echo [%date% %time%] Inicio >> "{log_bat}"
-{cmd_extrai}
-{cmd_sanitize}
-if exist "{target_bat}" (
-    cd /d "{raiz_sis}"
-    {comando_final}
+echo [%date% %time%] Iniciando Script >> "{log_bat}"
+if exist "{target_script}" (
+    cd /d "{pasta_destino}"
+    call "{script_nome}" {script_args} >> "{log_bat}"
+    echo Sucesso >> "{log_bat}"
 ) else (
-    echo ERRO: Script {script_nome} nao encontrado em {raiz_sis} >> "{log_bat}"
+    echo ERRO: Script {script_nome} nao encontrado em {pasta_destino} >> "{log_bat}"
 )
 exit
 """
     try:
-        # Cria o arquivo BAT no disco
-        with open(bat_path, 'w') as f:
-            f.write(conteudo_bat)
-    except:
-        # Caso haja erro ao gravar o arquivo BAT
-        return False, "Erro criar BAT"
+        with open(bat_path, 'w') as f: f.write(conteudo_bat)
+    except: return False, "Erro criar BAT"
 
     # ======================================
-    # 3. AGENDAR TAREFA NO SISTEMA
+    # 4. AGENDAR NO WINDOWS (Task Scheduler)
     # ======================================
-
     try:
-        # Divide data e hora enviadas pela central
-        d, h = data_hora.split(" ")
-        
-        # Sufixo para nome de tarefa baseado no modo de operação
-        sufixo = "Full" if modo == "COMPLETO" else "EXE"
+        if " " in data_hora:
+            d_str, h_str = data_hora.split(" ")
+        else:
+            d_str = datetime.now().strftime("%d/%m/%Y"); h_str = "03:00"
 
-        # Nome padrão da tarefa no Windows Task Scheduler
-        task_name = f"CIGS_Atualizacao_{sufixo}_{sistema.upper()}"
+        task_name = f"CIGS_Update_{sistema.upper()}"
         
-        # Comando para criar tarefa com credenciais do usuário informado
-        cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
+        # Cria a tarefa apontando para o nosso Launcher.bat
+        cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
         
-        # Executa comando para criar tarefa
         res = subprocess.run(cmd_sch, shell=True, capture_output=True, text=True)
 
-        # Se criar com sucesso, retorna OK
         if res.returncode == 0:
-            return True, f"Agendado: {task_name}"
-        
-        # Caso falhe, tenta criar como SYSTEM (usuário com mais poderes)
-        cmd_sys = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d} /st {h} /ru SYSTEM /rl HIGHEST /f'
-        
-        # Se funcionar como SYSTEM, retorna OK
-        if subprocess.run(cmd_sys, shell=True).returncode == 0:
-            return True, f"Agendado SYSTEM: {task_name}"
-        
-        # Caso nenhum dos dois consiga, retorna erro
-        return False, f"Falha Task: {res.stderr}"
+            log_debug(f"Agendamento realizado com SUCESSO: {task_name}", sistema)
+            return True, "Agendado"
+        else:
+            # Tenta fallback com usuario se SYSTEM falhar (raro)
+            cmd_user = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
+            if subprocess.run(cmd_user, shell=True).returncode == 0:
+                return True, "Agendado (User)"
+            
+            log_debug(f"Erro Schtasks: {res.stderr}", sistema)
+            return False, f"Erro Task: {res.stderr}"
 
     except Exception as e:
         return False, str(e)
@@ -232,9 +238,68 @@ def analisar_log_backup(sistema, data_alvo=None):
         return {"erro": "Erro Leitura"}
 
 def cancelar_missao():
+    log_debug("Iniciando cancelamento de missoes...")
     try:
-        # Deleta qualquer tarefa do agendador cujo nome começa com CIGS
-        subprocess.run('schtasks /delete /tn "CIGS*" /f', shell=True)
-        return "OK"
+        # 1. Lista todas as tarefas em formato CSV
+        res = subprocess.run('schtasks /query /fo CSV /nh', shell=True, capture_output=True, text=True)
+        if res.returncode != 0: return "Erro ao ler tarefas"
+        
+        count = 0
+        # 2. Varre linha por linha procurando "CIGS_"
+        for linha in res.stdout.splitlines():
+            if "CIGS_" in linha:
+                # Pega o nome da tarefa (primeira coluna, remove aspas)
+                nome_tarefa = linha.split(',')[0].strip('"')
+                log_debug(f"Matando tarefa: {nome_tarefa}")
+                
+                # 3. Deleta especificamente essa tarefa
+                subprocess.run(f'schtasks /delete /tn "{nome_tarefa}" /f', shell=True)
+                count += 1
+        
+        if count == 0: return "Nenhuma tarefa encontrada."
+        return f"Abatidas {count} tarefas CIGS."
+        
+    except Exception as e:
+        return f"Erro Abortar: {str(e)}"
+
+def analisar_relatorio_deploy(sistema, data_filtro=None):
+    """
+    Lê o log do agente (CIGS_debug.log) e conta sucessos/erros 
+    FILTRANDO pelo sistema (ex: [AC], [AG]).
+    """
+    # Importa aqui para evitar erro circular ou garanta que ARQUIVO_LOG_DEBUG está importado no topo
+    from .config import ARQUIVO_LOG_DEBUG 
+    
+    total = 0; sucessos = 0; falhas = 0
+    
+    if not os.path.exists(ARQUIVO_LOG_DEBUG):
+        return {"total": 0, "sucessos": 0, "falhas": 0, "porcentagem": 0}
+
+    # Formata data para bater com o log (YYYY-MM-DD)
+    data_fmt = None
+    if data_filtro and len(data_filtro) == 8:
+        data_fmt = f"{data_filtro[:4]}-{data_filtro[4:6]}-{data_filtro[6:]}"
+
+    try:
+        with open(ARQUIVO_LOG_DEBUG, "r", encoding="utf-8") as f:
+            for line in f:
+                # 1. Filtra pelo sistema (A chave do sucesso!)
+                if f"[{sistema}]" not in line:
+                    continue
+                
+                # 2. Filtra pela data (se informada)
+                if data_fmt and data_fmt not in line:
+                    continue
+
+                # 3. Contabiliza
+                if "Agendamento realizado com SUCESSO" in line:
+                    sucessos += 1
+                    total += 1
+                elif "Erro" in line or "Falha" in line:
+                    falhas += 1
+                    total += 1
+        
+        p = int((sucessos/total)*100) if total > 0 else 0
+        return {"total": total, "sucessos": sucessos, "falhas": falhas, "porcentagem": p}
     except:
-        return "Erro"
+        return {"total": 0, "sucessos": 0, "falhas": 0, "porcentagem": 0}

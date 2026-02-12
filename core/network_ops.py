@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone  # Para manipular datas e fus
 
 class CIGSCore:
     def __init__(self):
-        self.PORTA_AGENTE = 5578    # Porta padrão usada pelo agente nos servidores
+        self.PORTA_AGENTE = 5580    # Porta padrão usada pelo agente nos servidores
         
         # Configuração inicial do Logger
         # Cria o arquivo 'cigs_ops.log'
@@ -57,42 +57,86 @@ class CIGSCore:
             self.registrar_log(f"Erro ao ler arquivo: {e}", "ERRO")
             return []
 
-    def checar_status_agente(self, ip, sistema, **kwargs):
+    def checar_status_agente(self, ip, sistema="AC", full=False, timeout=3):
         """
-        Consulta o agente do servidor e busca informações como:
-        - versão
-        - disk, ram
-        - hash
-        Pode receber o parâmetro optional full=True para expandir dados.
+        Consulta o agente do servidor e busca informações de status.
+        
+        Args:
+            ip (str): Endereço IP do servidor
+            sistema (str): Sistema alvo (AC, AG, PONTO, PATRIO)
+            full (bool): Se True, inclui dados de disco e RAM
+            timeout (int): Timeout em segundos (default: 3s)
+        
+        Returns:
+            dict: Sempre contém 'ip' e 'status'
+                Sucesso: status='ONLINE' + dados do agente
+                Erro: status='OFFLINE'/'ERRO_API'/'TIMEOUT' + mensagem
         """
         try:
-            # Monta a URL base sempre incluindo o sistema
-            url = f"http://{ip}:{self.PORTA_AGENTE}/cigs/status?sistema={sistema}"
+            # Monta URL com parâmetros
+            url = f"http://{ip}:{self.PORTA_AGENTE}/cigs/status"
+            params = {'sistema': sistema}
+            if full:
+                params['full'] = '1'
             
-            # Caso 'full=True' tenha sido passado, adiciona na URL
-            if kwargs.get('full'):
-                url += "&full=1"
-
-            print(f"[DEBUG] Consultando: {url}")  # Log para depuração no console
-
-            r = requests.get(url, timeout=2)      # Envia requisição GET
-            if r.status_code == 200:
-                d = r.json()                      # Converte resposta para JSON
+            # Timeout adaptativo: full=true precisa de mais tempo
+            timeout_atual = timeout * 2 if full else timeout
+            
+            # Faz a requisição
+            resp = requests.get(url, params=params, timeout=timeout_atual)
+            
+            # Trata diferentes status HTTP
+            if resp.status_code == 200:
+                dados = resp.json()
                 return {
                     "ip": ip,
                     "status": "ONLINE",
-                    "version": d.get('version', '?'), 
-                    "hash": d.get('hash'),
-                    "clientes": d.get('clientes', 0),
-                    "ref": d.get('ref', '-'),
-                    "disk": d.get('disk', '?'),
-                    "ram": d.get('ram', '?')
+                    "version": dados.get('version', '?'),
+                    "hash": dados.get('hash'),
+                    "clientes": dados.get('clientes', 0),
+                    "ref": dados.get('ref', '-'),
+                    "disk": dados.get('disk', '?') if full else None,
+                    "ram": dados.get('ram', '?') if full else None,
+                    "msg": None
                 }
-            # Caso o status não seja 200
-            return {"ip": ip, "status": "ERRO API", "msg": str(r.status_code)}
-        except:
-            # Timeout ou erro de conexão
-            return {"ip": ip, "status": "OFFLINE", "msg": "Timeout"}
+            elif resp.status_code == 404:
+                return {
+                    "ip": ip,
+                    "status": "ERRO_API",
+                    "msg": f"Rota não encontrada (404)",
+                    "version": None, "hash": None, "clientes": 0, "ref": "-"
+                }
+            else:
+                return {
+                    "ip": ip,
+                    "status": "ERRO_API",
+                    "msg": f"HTTP {resp.status_code}",
+                    "version": None, "hash": None, "clientes": 0, "ref": "-"
+                }
+                
+        except requests.exceptions.Timeout:
+            return {
+                "ip": ip,
+                "status": "TIMEOUT",
+                "msg": f"Timeout após {timeout_atual}s",
+                "version": None, "hash": None, "clientes": 0, "ref": "-"
+            }
+        except requests.exceptions.ConnectionError:
+            return {
+                "ip": ip,
+                "status": "OFFLINE",
+                "msg": "Conexão recusada",
+                "version": None, "hash": None, "clientes": 0, "ref": "-"
+            }
+        except Exception as e:
+            # Log do erro inesperado para diagnóstico
+            print(f"[ERRO] checar_status_agente({ip}): {type(e).__name__} - {e}")
+            return {
+                "ip": ip,
+                "status": "ERRO",
+                "msg": f"{type(e).__name__}",
+                "version": None, "hash": None, "clientes": 0, "ref": "-"
+            }
 
     def enviar_ordem_agendamento(self, ip, url, arq, data, user, senha, sistema, modo, script="Executa.bat", params=""):
         """
@@ -230,3 +274,93 @@ class CIGSCore:
         except:
             pass
         return False, "Erro"                           # Falha
+
+    def enviar_comando_bd(self, ip, motor, acao, db_path):
+        """
+        Envia ordem de manutenção de banco.
+        Para MSSQL, envia o script T-SQL completo.
+        Para Firebird, envia os comandos gfix/gbak.
+        """
+        script_sql = ""
+        comando_cmd = ""
+        
+        if motor == "MSSQL":
+            if acao == "MAINTENANCE":
+                # SEU SCRIPT TOP AQUI (Com placeholder pro nome do banco)
+                script_sql = f"""
+                USE [{db_path}];
+                GO
+                PRINT '--- START CIGS MAINTENANCE ---';
+                DBCC CHECKDB ('{db_path}') WITH NO_INFOMSGS;
+                ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;
+                ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;
+                
+                DECLARE @tableName nvarchar(500), @indexName nvarchar(500), @percentFragment decimal(11,2);
+                DECLARE FragmentedTableList cursor for
+                SELECT object_name(indexstats.object_id), dbindexes.[name], indexstats.avg_fragmentation_in_percent
+                FROM sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, NULL) AS indexstats
+                INNER JOIN sys.tables dbtables ON dbtables.[object_id] = indexstats.[object_id]
+                INNER JOIN sys.indexes dbindexes ON dbindexes.[object_id] = indexstats.[object_id] 
+                AND indexstats.index_id = dbindexes.index_id
+                WHERE indexstats.avg_fragmentation_in_percent > 5 AND indexstats.page_count > 10 AND dbindexes.[name] IS NOT NULL
+                ORDER BY indexstats.page_count DESC;
+                
+                OPEN FragmentedTableList;
+                FETCH NEXT FROM FragmentedTableList INTO @tableName, @indexName, @percentFragment;
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    IF(@percentFragment BETWEEN 5 AND 30) EXEC('ALTER INDEX [' + @indexName + '] ON [' + @tableName + '] REORGANIZE;');
+                    ELSE IF (@percentFragment > 30) EXEC('ALTER INDEX [' + @indexName + '] ON [' + @tableName + '] REBUILD;');
+                    FETCH NEXT FROM FragmentedTableList INTO @tableName, @indexName, @percentFragment;
+                END
+                CLOSE FragmentedTableList; DEALLOCATE FragmentedTableList;
+                PRINT '--- END CIGS MAINTENANCE ---';
+                """
+            elif acao == "CHECKDB":
+                script_sql = f"DBCC CHECKDB ('{db_path}') WITH NO_INFOMSGS;"
+
+            # O Agente precisa saber rodar SQL. Vamos assumir que ele salva num .sql e roda sqlcmd
+            # Se o agente não tiver lógica de SQL, mandamos como comando CMD usando sqlcmd direto
+            # Ex: sqlcmd -S localhost -E -Q "QUERY"
+            # Como o script é grande, o ideal seria o Agente receber um tipo "SQL_EXEC".
+            # Vou simplificar: Enviamos como 'CMD' chamando sqlcmd, mas o script é grande demais para linha de comando.
+            # ESTRATÉGIA: Vamos mandar o agente salvar o arquivo e rodar.
+            
+            # Payload para o Agente (Assumindo que ele aceita 'script_content')
+            payload = {
+                "action": "SQL_MAINTENANCE",
+                "db_name": db_path,
+                "script": script_sql
+            }
+
+        elif motor == "FIREBIRD":
+            # Traduz ações para comandos GFIX/GBAK
+            user_pass = "-user SYSDBA -pass masterkey" # Padrão ou pegar da config
+            if acao == "CHECK":
+                comando_cmd = f'gfix -v -full "{db_path}" {user_pass}'
+            elif acao == "MEND":
+                comando_cmd = f'gfix -mend -full -ignore "{db_path}" {user_pass}'
+            elif acao == "SWEEP":
+                comando_cmd = f'gfix -sweep "{db_path}" {user_pass}'
+            elif acao == "AUTO":
+                # Envia um comando composto
+                comando_cmd = f'gfix -mend -full -ignore "{db_path}" {user_pass} && gfix -sweep "{db_path}" {user_pass}'
+            
+            payload = {
+                "action": "CMD_EXEC",
+                "cmd": comando_cmd
+            }
+
+        # Envio Genérico (Você já tem a lógica de post no api.py ou aqui mesmo)
+        try:
+            url = f"http://{ip}:5578/cigs/exec"
+            # Nota: Você precisará adaptar o endpoint do Agente se ele não tiver /cigs/exec genérico
+            # Se usar o endpoint de agendamento existente, adapte os parâmetros.
+            import requests
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code == 200:
+                return {"status": "OK", "msg": "Comando enviado."}
+            else:
+                return {"status": "ERRO", "msg": f"HTTP {resp.status_code}"}
+        except Exception as e:
+            return {"status": "FALHA", "msg": str(e)}

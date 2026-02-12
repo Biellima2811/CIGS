@@ -5,31 +5,26 @@ import sys
 import hashlib
 import subprocess
 from datetime import datetime
+# 1. ATUALIZE ESTA LINHA DE IMPORTAÇÃO (Adicione ARQUIVO_LOG_DEBUG)
+from .config import PASTA_BASE, PASTA_DOWNLOAD, UNRAR_PATH, MAPA_RAIZ, get_caminho_atualizador, ARQUIVO_LOG_DEBUG
 
-# Importa variáveis globais definidas no config.py
-from .config import ARQUIVO_LOG_DEBUG, PASTA_BASE, MAPA_RAIZ
 
-
-def log_debug(msg):
+def log_debug(msg, sistema="GERAL"):
+    """
+    Registra mensagens de log com timestamp e tag do sistema.
+    """
     try:
-        # Cria timestamp no formato YYYY-MM-DD HH:MM:SS
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Adiciona a TAG do sistema no log para permitir contagem separada
+        texto = f"[{ts}] [{sistema}] {msg}"
         
-        # Monta a frase final que será gravada
-        texto = f"[{ts}] {msg}"
-        
-        # Exibe no console (útil para depuração)
-        print(texto)
+        print(texto) # Debug no console
 
-        # Se a pasta base não existir, cria (garante que o log consiga ser salvo)
         if not os.path.exists(PASTA_BASE):
             os.makedirs(PASTA_BASE)
 
-        # Abre o arquivo de log no modo append ("a") e grava a mensagem
         with open(ARQUIVO_LOG_DEBUG, "a", encoding="utf-8") as f:
             f.write(texto + "\n")
-
-    # Qualquer erro é ignorado para evitar exceções durante tentativa de log
     except:
         pass
 
@@ -85,16 +80,17 @@ def contar_clientes(sistema):
       - Conta linhas contendo "Customer="
       - Ignora linhas comentadas (que começam com ";")
     """
+    sistema = sistema.upper().strip()
 
     # Log inicial da operação
-    log_debug(f"--- Iniciando contagem (Lógica Estrita) para: {sistema} ---")
+    log_debug(f"--- Iniciando contagem para: {sistema} ---", sistema)
     
     # 1. Busca a pasta raiz correspondente ao sistema no MAPA_RAIZ
     raiz = MAPA_RAIZ.get(sistema.upper())
 
     # Se o sistema não existir no mapa, aborta
     if not raiz:
-        log_debug(f"ERRO: Sistema {sistema} não mapeado no MAPA_RAIZ.")
+        log_debug(f"ERRO: Raiz não encontrada", sistema)
         return 0, "Path N/A"
 
     # 2. Lista os possíveis caminhos onde o config.ini pode estar
@@ -152,3 +148,43 @@ def contar_clientes(sistema):
         # Em caso de erro inesperado, registra e retorna falha
         log_debug(f"ERRO ao ler arquivo: {str(e)}")
         return 0, f"Erro: {str(e)}"
+
+def analisar_relatorio_deploy(sistema, data_filtro=None):
+    """
+    Lê o log do agente (CIGS_debug.log) e conta sucessos/erros 
+    FILTRANDO pelo sistema (ex: [AC], [AG]).
+    """
+    total = 0; sucessos = 0; falhas = 0
+    
+    if not os.path.exists(ARQUIVO_LOG_DEBUG):
+        return {"total": 0, "sucessos": 0, "falhas": 0, "porcentagem": 0}
+
+    # Formata data para bater com o log (YYYY-MM-DD)
+    # A central manda YYYYMMDD, o log usa YYYY-MM-DD
+    data_fmt = None
+    if data_filtro and len(data_filtro) == 8:
+        data_fmt = f"{data_filtro[:4]}-{data_filtro[4:6]}-{data_filtro[6:]}"
+
+    try:
+        with open(ARQUIVO_LOG_DEBUG, "r", encoding="utf-8") as f:
+            for line in f:
+                # 1. Filtra pelo sistema (A chave do sucesso!)
+                if f"[{sistema}]" not in line:
+                    continue
+                
+                # 2. Filtra pela data (se informada)
+                if data_fmt and data_fmt not in line:
+                    continue
+
+                # 3. Contabiliza
+                if "Agendamento realizado com SUCESSO" in line:
+                    sucessos += 1
+                    total += 1
+                elif "Erro" in line or "Falha" in line:
+                    falhas += 1
+                    total += 1
+        
+        p = int((sucessos/total)*100) if total > 0 else 0
+        return {"total": total, "sucessos": sucessos, "falhas": falhas, "porcentagem": p}
+    except:
+        return {"total": 0, "sucessos": 0, "falhas": 0, "porcentagem": 0}

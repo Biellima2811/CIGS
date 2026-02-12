@@ -25,26 +25,37 @@ class InfraPanel(ttk.Frame):
         # Botão para carregar lista de IPs a partir de arquivo TXT
         ttk.Button(f_tools, text="📂 Lista TXT", command=self.cb['load_ips']).pack(side="left", padx=2)
         # Botão para carregar lista de servidores dedicados a partir de CSV
-        ttk.Button(f_tools, text="🏢 Dedicados CSV", command=self.cb['load_csv']).pack(side="left", padx=2)
+        ttk.Button(f_tools, text="📥 Importar CSV (BD)", command=self.cb['import_csv']).pack(side="left", padx=2)
+
+        ttk.Separator(f_tools, orient="vertical").pack(side="left", padx=5, fill="y")
+        ttk.Button(f_tools, text="🗄️ Carregar DB", command=self.cb['load_db']).pack(side="left", padx=2)
+        ttk.Button(f_tools, text="➕ Novo Servidor", command=self.cb['add_server']).pack(side="left", padx=2)
+
         # Botão para migrar agente (ação personalizada)
         ttk.Button(f_tools, text="🛠️ Migrar Agente", command=self.cb['deploy']).pack(side="right", padx=2)
 
         # Tabela (Treeview) para listar servidores
         # Selectmode=extended permite múltiplas seleções (Ctrl+Click)
-        cols = ("IP", "Status", "Cliente", "Info")
+        cols = ("IP", "Hostname", "IP Pub", "Funcao", "Cliente", "Status", "Info")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="extended")
         
         # Cabeçalhos das colunas
         self.tree.heading("IP", text="IP")
-        self.tree.heading("Status", text="Status")
+        self.tree.heading("Hostname", text="Hostname")
+        self.tree.heading("IP Pub", text="IP Público")
+        self.tree.heading("Funcao", text="Função")
         self.tree.heading("Cliente", text="Cliente")
+        self.tree.heading("Status", text="Status")
         self.tree.heading("Info", text="Info")
         
         # Configuração de largura e alinhamento das colunas
         self.tree.column("IP", width=110, anchor="center")
+        self.tree.column("Hostname", width=120, anchor="center")
+        self.tree.column("IP Pub", width=110, anchor="center")
+        self.tree.column("Funcao", width=80, anchor="center")
+        self.tree.column("Cliente", width=200, anchor="center")
         self.tree.column("Status", width=90, anchor="center")
-        self.tree.column("Cliente", width=200, anchor="w")
-        self.tree.column("Info", width=150, anchor="w")
+        self.tree.column("Info", width=150, anchor="center")
 
         # Scrollbar vertical para a tabela
         scrolly = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
