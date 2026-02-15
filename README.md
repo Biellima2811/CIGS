@@ -284,7 +284,3 @@ Ano: 2026
 Issues e sugestões: Abra uma issue no repositório oficial ou entre em contato com a equipe de infraestrutura.
 
 Contribuições: Pull requests são bem-vindos! Por favor, siga as boas práticas de código e documente as alterações.
-
-📄 Licença
-
-Este projeto é propriedade da Fortes Tecnologia e seu uso é restrito a ambientes internos da empresa. A redistribuição ou modificação sem autorização expressa é proibida.
