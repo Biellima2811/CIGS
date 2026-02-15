@@ -60,108 +60,98 @@ def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start
     
     ajustar_permissoes()
     
-    # 1. DEFINIÇÃO RÍGIDA DE DESTINO (Correção do Conflito)
-    # Aqui garantimos que o caminho seja EXATAMENTE o que você quer
-    if sistema.upper() == "AC":
-        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\AC\Atualizadores\AC"
-    elif sistema.upper() == "AG":
-        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\AG\Atualizadores\AG"
-    elif sistema.upper() == "PONTO":
-        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\PONTO\Atualizadores\PONTO"
-    elif sistema.upper() == "PATRIO":
-        pasta_destino = r"C:\Atualiza\CloudUp\CloudUpCmd\Patrio\Atualizadores\Patrio"
-    else:
-        # Se não for um desses, usa o padrão ou o start_in enviado
-        pasta_destino = start_in if start_in else get_caminho_atualizador(sistema)
-
-    if not pasta_destino: return False, "Caminho invalido"
+    # pasta_destino é onde os arquivos do pacote serão colocados (pasta de instalação, com Atualizadores)
+    pasta_destino = start_in if start_in else get_caminho_atualizador(sistema)
+    if not pasta_destino:
+        return False, "Caminho invalido"
 
     # Cria a pasta destino se não existir
-    if not os.path.exists(pasta_destino): 
-        try: os.makedirs(pasta_destino)
-        except: pass
+    if not os.path.exists(pasta_destino):
+        try:
+            os.makedirs(pasta_destino)
+        except:
+            pass
 
     # ====================================================
-    # 2. OPERAÇÃO DE DOWNLOAD E EXTRAÇÃO (Python Nativo)
+    # 2. OPERAÇÃO DE DOWNLOAD E EXTRAÇÃO (se modo COMPLETO)
     # ====================================================
     if modo == "COMPLETO":
-        # Garante pasta de downloads
-        if not os.path.exists(PASTA_DOWNLOAD): os.makedirs(PASTA_DOWNLOAD)
+        if not os.path.exists(PASTA_DOWNLOAD):
+            os.makedirs(PASTA_DOWNLOAD)
         caminho_rar = os.path.join(PASTA_DOWNLOAD, nome_arquivo)
 
-        # A) Download
         try:
             log_debug("Baixando pacote...", sistema)
             r = requests.get(url, stream=True, timeout=300)
             if r.status_code == 200:
                 with open(caminho_rar, 'wb') as f:
-                    for c in r.iter_content(8192): f.write(c)
+                    for chunk in r.iter_content(8192):
+                        f.write(chunk)
             else:
                 return False, f"HTTP Download {r.status_code}"
         except Exception as e:
             return False, f"Erro Download: {e}"
 
-        # B) Extração Inteligente (Anti-Subpasta)
         try:
             temp_extract = os.path.join(PASTA_BASE, "Temp_Install")
-            # Limpa temp antigo
-            if os.path.exists(temp_extract): shutil.rmtree(temp_extract, ignore_errors=True)
+            if os.path.exists(temp_extract):
+                shutil.rmtree(temp_extract, ignore_errors=True)
             os.makedirs(temp_extract)
 
             log_debug("Extraindo para temporario...", sistema)
-            # Extrai o RAR para a pasta Temp
             subprocess.run(f'"{UNRAR_PATH}" x -y "{caminho_rar}" "{temp_extract}\\"', shell=True, stdout=subprocess.DEVNULL)
 
-            # --- LÓGICA DE CORREÇÃO DE PASTA ---
+            # Lógica de correção de pasta (anti-subpasta)
             items = os.listdir(temp_extract)
             source_folder = temp_extract
-            
-            # Se tiver apenas UMA pasta dentro (ex: "AtualizaPonto"), entra nela
             if len(items) == 1 and os.path.isdir(os.path.join(temp_extract, items[0])):
                 source_folder = os.path.join(temp_extract, items[0])
                 log_debug(f"Subpasta detectada ({items[0]}). Ajustando origem.", sistema)
 
-            # Move os arquivos da origem correta para o Destino Final
             log_debug(f"Movendo arquivos para: {pasta_destino}", sistema)
-            
-            # O comando xcopy /E /Y garante que vai substituir e manter a estrutura
             cmd_copy = f'xcopy "{source_folder}\\*" "{pasta_destino}\\" /E /H /C /I /Y'
             subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL)
 
-            # Limpeza final
             shutil.rmtree(temp_extract, ignore_errors=True)
-            try: os.remove(caminho_rar)
-            except: pass
+            try:
+                os.remove(caminho_rar)
+            except:
+                pass
 
         except Exception as e:
             log_debug(f"Erro na Instalação: {e}", sistema)
             return False, f"Erro Install: {e}"
 
     # ======================================
-    # 3. GERAR BAT DE EXECUÇÃO (Apenas roda o script)
+    # 3. GERAR BAT DE EXECUÇÃO
     # ======================================
-    # Como já extraímos e movemos os arquivos, o BAT agora é simples.
-    
+    # Determina a pasta onde o script .bat está (raiz do sistema)
+    if pasta_destino and 'Atualizadores' in pasta_destino:
+        # Sobe dois níveis: de ...\Ponto\Atualizadores\Ponto para ...\Ponto
+        pasta_scripts = os.path.dirname(os.path.dirname(pasta_destino))
+    else:
+        pasta_scripts = pasta_destino  # fallback
+
     bat_path = os.path.join(PASTA_BASE, f"Launcher_{sistema}.bat")
     log_bat = r"C:\CIGS\execucao.log"
-    
-    # Monta o caminho do script alvo (ex: C:\...\AC\Executa.bat)
-    target_script = os.path.join(pasta_destino, script_nome)
-    
+    target_script = os.path.join(pasta_scripts, script_nome)
+
     conteudo_bat = f"""@echo off
 echo [%date% %time%] Iniciando Script >> "{log_bat}"
 if exist "{target_script}" (
-    cd /d "{pasta_destino}"
+    cd /d "{pasta_scripts}"
     call "{script_nome}" {script_args} >> "{log_bat}"
     echo Sucesso >> "{log_bat}"
 ) else (
-    echo ERRO: Script {script_nome} nao encontrado em {pasta_destino} >> "{log_bat}"
+    echo ERRO: Script {script_nome} nao encontrado em {pasta_scripts} >> "{log_bat}"
 )
 exit
 """
     try:
-        with open(bat_path, 'w') as f: f.write(conteudo_bat)
-    except: return False, "Erro criar BAT"
+        with open(bat_path, 'w') as f:
+            f.write(conteudo_bat)
+    except:
+        return False, "Erro criar BAT"
 
     # ======================================
     # 4. AGENDAR NO WINDOWS (Task Scheduler)
@@ -170,29 +160,25 @@ exit
         if " " in data_hora:
             d_str, h_str = data_hora.split(" ")
         else:
-            d_str = datetime.now().strftime("%d/%m/%Y"); h_str = "03:00"
+            d_str = datetime.now().strftime("%d/%m/%Y")
+            h_str = "03:00"
 
         task_name = f"CIGS_Update_{sistema.upper()}"
-        
-        # Cria a tarefa apontando para o nosso Launcher.bat
         cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
-        
         res = subprocess.run(cmd_sch, shell=True, capture_output=True, text=True)
 
         if res.returncode == 0:
             log_debug(f"Agendamento realizado com SUCESSO: {task_name}", sistema)
             return True, "Agendado"
         else:
-            # Tenta fallback com usuario se SYSTEM falhar (raro)
             cmd_user = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
             if subprocess.run(cmd_user, shell=True).returncode == 0:
                 return True, "Agendado (User)"
-            
             log_debug(f"Erro Schtasks: {res.stderr}", sistema)
             return False, f"Erro Task: {res.stderr}"
-
     except Exception as e:
         return False, str(e)
+
 
 
 def analisar_log_backup(sistema, data_alvo=None):

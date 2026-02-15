@@ -54,24 +54,18 @@ MAPA_RAIZ = {
 
 def get_caminho_atualizador(sistema):
     """
-    Retorna o caminho exato de onde o agente deve extrair e executar o atualizador.
-    Exemplo esperado:
-        C:\Atualiza\CloudUp\CloudUpCmd\AC\Atualizadores\AC
+    Retorna o caminho da pasta de instalação (onde os pacotes são extraídos).
+    Exemplo: C:\Atualiza\CloudUp\CloudUpCmd\AC\Atualizadores\AC
     """
-
-    # Obtém a raiz correspondente ao sistema informado (AC, AG, PONTO, etc.)
     raiz = MAPA_RAIZ.get(sistema.upper())
-
-    # Caso o sistema não exista no mapa, retorna None
     if not raiz:
         return None
-    
-    # Nome da subpasta padrão é o próprio nome do sistema
-    subpasta = sistema.upper()
-
-    # Caso especial: o sistema "PONTO" usa pasta "Ponto" com P maiúsculo e resto minúsculo
+    # O nome da subpasta é o mesmo da última parte da raiz, mas com a capitalização correta
+    # Se necessário, use um mapa específico para os nomes das pastas
     if sistema.upper() == "PONTO":
         subpasta = "Ponto"
-    
-    # Retorna o caminho completo, incluindo pasta "Atualizadores" e a subpasta específica
+    elif sistema.upper() == "PATRIO":
+        subpasta = "Patrio"
+    else:
+        subpasta = sistema.upper()
     return os.path.join(raiz, "Atualizadores", subpasta)

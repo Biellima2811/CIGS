@@ -3,6 +3,7 @@ import os                           # Biblioteca para manipulação de arquivos/
 import logging                      # Biblioteca para registrar logs em arquivo
 from urllib.parse import urlparse, parse_qs   # Para analisar parâmetros de URLs
 from datetime import datetime, timedelta, timezone  # Para manipular datas e fusos horários
+import subprocess
 
 class CIGSCore:
     def __init__(self):
@@ -364,3 +365,23 @@ class CIGSCore:
                 return {"status": "ERRO", "msg": f"HTTP {resp.status_code}"}
         except Exception as e:
             return {"status": "FALHA", "msg": str(e)}
+    
+    def detectar_formato_data_servidor(self, ip, user, password):
+        """
+        Detecta o formato de data do servidor remoto via WMIC
+        Retorna: '%d/%m/%Y' para pt-BR, '%m/%d/%Y' para en-US
+        """
+        try:
+            cmd = f'wmic /node:"{ip}" /user:"{user}" /password:"{password}" os get locale'
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if line.strip() and line.strip().isdigit():
+                        locale_id = line.strip()
+                        # 1046 = pt-BR, 1033 = en-US
+                        return "%d/%m/%Y" if locale_id == "1046" else "%m/%d/%Y"
+        except:
+            pass
+        
+        return "%d/%m/%Y"  # fallback seguro

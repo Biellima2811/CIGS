@@ -93,6 +93,24 @@ class DbPanel(ttk.Frame):
 
             ttk.Label(self.f_actions, text="Nota: O script realiza CheckDB, Snapshot Isolation e Reindexação Inteligente.",
                       foreground="gray").grid(row=3, column=0, columnspan=2, pady=5)
+    def atualizar_combo_list(self, encontrados):
+        """
+        Atualiza a combobox com a lista de bancos encontrados.
+        """
+        if encontrados:
+            # Se existir um combox para seleção de banco, atualiza
+            if hasattr(self, 'combo_bancos'):
+                self.combo_bancos['values'] = encontrados
+                if len(encontrados) > 0:
+                    self.combo_bancos.current(0)
+            self.log(f'✅ Encontrados {len(encontrados)} bancos de dados')
+
+            for caminho in encontrados[:5]:
+                self.log(f' 🗂️{caminho}')
+            if len(encontrados) > 5:
+                self.log(f'... e mais {len(encontrados)-5} bancos')
+        else:
+            self.log('⚠️ Nenhum banco de dados encontrado.')
 
     def log(self, msg):
         self.txt_log.insert(tk.END, msg + "\n")

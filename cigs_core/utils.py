@@ -188,3 +188,19 @@ def analisar_relatorio_deploy(sistema, data_filtro=None):
         return {"total": total, "sucessos": sucessos, "falhas": falhas, "porcentagem": p}
     except:
         return {"total": 0, "sucessos": 0, "falhas": 0, "porcentagem": 0}
+    
+def detectar_formato_data():
+    """
+    Detecta o formato de data baseado no locale do Windows.
+    Retorna: ('%d/%m/%Y' ou '%m/%d/%Y')
+    """
+    try:
+        resultado = subprocess.run(
+            ["wmic", "os", "get", "Locale"],
+            capture_output=True, text=True, check=True
+        )
+        locale_id = resultado.stdout.split("\n")[1].strip()
+        # 1046 = pt-BR, 1033 = en-US
+        return "%d/%m/%Y" if locale_id == "1046" else "%m/%d/%Y"
+    except:
+        return "%d/%m/%Y"  # fallback seguro

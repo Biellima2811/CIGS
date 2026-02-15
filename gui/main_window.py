@@ -28,6 +28,7 @@ from core.sheets_manager import CIGSSheets
 from core.security_manager import CIGSSecurity
 from core.db_manager import CIGSDatabase
 from gui.dialogs.schedule_dialog import ScheduleDialog
+from core.email_manager import CIGSEmailManager
 
 # Imports dos Painéis
 from gui.panels.top_panel import TopPanel
@@ -95,6 +96,7 @@ class CIGSApp:
         self.core = CIGSCore()
         self.sheets = CIGSSheets()
         self.security = CIGSSecurity()
+        self.email_manager = CIGSEmailManager(self.security)
         
         self.monitor_active = False 
         self.setup_window()
@@ -658,6 +660,13 @@ class CIGSApp:
             except Exception as e:
                 self.log_visual(f"❌ {ip}: ERRO - {str(e)}")
                 stats['falha'] += 1
+                # ENVIA ALERTA DE ERRO CRÍTICO
+                self.email_manager.enviar_email_alerta(
+                    sistema=dados_painel['sistema'],
+                    servidor=ip,
+                    erro=str(e),
+                    criticidade="ALTA"
+                )
             
             finally:
                 subprocess.run(f'net use \\\\{ip}\\C$ /delete', shell=True, stdout=subprocess.DEVNULL)
@@ -962,12 +971,33 @@ class CIGSApp:
         sel = self.infra_panel.tree.selection()
         items = sel if sel else self.infra_panel.tree.get_children()
         
+        servidores_afetados = []
+        total_clientes = 0
+
         for item in items:
             ip = self.infra_panel.tree.item(item)['values'][0]
             if "OFFLINE" in self.infra_panel.tree.item(item)['tags']: 
                 continue
-            
+            # Tenta obter número de clientes para estatística
+            try:
+                res = self.core.checar_status_agente(ip, "AC")
+                clientes = res.get('clientes', 0)
+                total_clientes += clientes
+                servidores_afetados.append(ip)
+            except:
+                pass
             self.root.after(0, lambda i=ip: self.db_panel.log(f"-> {i}: Criando tarefa..."))
+        # ENVIA EMAIL DE CONFIRMAÇÃO!
+        if servidores_afetados:
+            sistema = self.top_panel.get_data()['sistema']
+            self.email_manager.enviar_email_agendamento(
+                sistema=sistema,
+                data=data,
+                hora=hora,
+                num_servidores=len(servidores_afetados),
+                clientes=total_clientes
+            )
+            self.log_visual(f"📧 Email de confirmação enviado para {sistema}")
             
         self.root.after(0, lambda: self.db_panel.log(">>> AGENDAMENTO CONCLUÍDO <<<"))
 
@@ -983,7 +1013,7 @@ class CIGSApp:
     def worker_relatorio(self):
         """
         Worker que gera relatório consolidado de execuções
-        Coleta dados de todos os servidores online e exporta para CSV
+        Agora com estatísticas detalhadas e email completo
         """
         data = self.top_panel.get_data()
         sis = data['sistema']
@@ -993,16 +1023,32 @@ class CIGSApp:
         except:
             dt = datetime.now().strftime("%Y%m%d")
         
-        self.log_visual(">>> RELATÓRIO <<<")
+        self.log_visual(">>> GERANDO RELATÓRIO <<<")
+        
+        stats = {
+            'total': 0,
+            'sucessos': 0,
+            'falhas': 0,
+            'servidores': []
+        }
+        
         csv_d = []
-        t_g = 0
-        s_g = 0
         
         items = self.infra_panel.tree.get_children()
         for item in items:
             valores = self.infra_panel.tree.item(item)['values']
             ip = valores[0]
+            hostname = valores[1] if len(valores) > 1 else ip
             status = valores[5] if len(valores) > 5 else ""
+            cliente = valores[4] if len(valores) > 4 else "-"
+            
+            servidor_info = {
+                'ip': ip,
+                'hostname': hostname,
+                'status': status,
+                'clientes': cliente,
+                'resultado': '-'
+            }
             
             if "OFFLINE" not in status:
                 res = self.core.obter_relatorio_agente(ip, sis, dt)
@@ -1010,35 +1056,67 @@ class CIGSApp:
                     t = res.get('total', 0)
                     s = res.get('sucessos', 0)
                     p = res.get('porcentagem', 0)
-                    t_g += t
-                    s_g += s
+                    falhas = t - s
+                    
+                    stats['total'] += t
+                    stats['sucessos'] += s
+                    stats['falhas'] += falhas
+                    
+                    servidor_info['resultado'] = f"{s}/{t} ({p}%)"
+                    
                     csv_d.append([ip, sis, t, s, f"{p}%", res.get('arquivo', '-')])
                     
                     self.root.after(0, lambda i=item, m=f"Log: {s}/{t}": 
-                                  self._atualizar_tree_relatorio(i, m))
+                                self._atualizar_tree_relatorio(i, m))
+            
+            stats['servidores'].append(servidor_info)
         
+        # Salva CSV
+        csv_path = None
         if csv_d:
             try:
-                nome = f"Rel_{sis}_{datetime.now().strftime('%H%M')}.csv"
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                nome = f"Relatorio_{sis}_{timestamp}.csv"
+                
                 with open(nome, 'w', newline='', encoding='utf-8-sig') as f:
                     w = csv.writer(f, delimiter=';')
-                    w.writerow(["IP", "Sis", "Tot", "Suc", "%", "Arq"])
+                    w.writerow(["IP", "Sistema", "Total", "Sucessos", "%", "Arquivo"])
                     w.writerows(csv_d)
+                
+                csv_path = os.path.abspath(nome)
                 self.log_visual(f"📁 CSV salvo: {nome}")
                 
-                # Envia email
-                self.enviar_email_relatorio(nome, t_g, s_g, t_g - s_g)
-                
-                # Google Sheets
-                try:
-                    dados_sheets = [[r[0], r[2], r[3], r[4], r[5]] for r in csv_d]
-                    self.sheets.atualizar_planilha(sis, dados_sheets)
-                    self.log_visual("📊 Planilha Google Atualizada.")
-                except Exception as e:
-                    self.log_visual(f"⚠️  Erro Sheets: {e}")
-                    
             except Exception as e:
                 self.log_visual(f"❌ Erro ao salvar CSV: {e}")
+        
+        # Salva log
+        log_path = None
+        try:
+            log_nome = f"Log_CIGS_{timestamp}.txt"
+            with open(log_nome, 'w', encoding='utf-8') as f:
+                f.write(self.txt_log.get("1.0", tk.END))
+            log_path = os.path.abspath(log_nome)
+        except:
+            pass
+        
+        # ENVIA EMAIL COMPLETO!
+        if stats['total'] > 0:
+            self.email_manager.enviar_email_relatorio_completo(
+                sistema=sis,
+                stats=stats,
+                csv_path=csv_path,
+                log_path=log_path
+            )
+            self.log_visual("📧 Relatório enviado por email!")
+        
+        # Google Sheets
+        if csv_d:
+            try:
+                dados_sheets = [[r[0], r[2], r[3], r[4], r[5]] for r in csv_d]
+                self.sheets.atualizar_planilha(sis, dados_sheets)
+                self.log_visual("📊 Planilha Google Atualizada.")
+            except Exception as e:
+                self.log_visual(f"⚠️  Erro Sheets: {e}")
         
         self.log_visual(">>> FIM RELATÓRIO <<<")
 
@@ -1073,35 +1151,127 @@ class CIGSApp:
     # ==========================================
     
     def janela_config_email(self):
-        """Abre janela para configuração de email"""
+        """Abre janela para configuração de email com múltiplos destinatários"""
         win = Toplevel(self.root)
-        win.title("Configuração de Email")
-        win.geometry("400x250")
+        win.title("📧 Configuração de Email - CIGS")
+        win.geometry("500x350")
         win.resizable(False, False)
+        win.configure(bg="#ecf0f1")
         
-        Label(win, text="Email:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        e1 = Entry(win, width=30)
+        # Título
+        tk.Label(win, text="CONFIGURAÇÃO DE NOTIFICAÇÕES", 
+                font=("Arial", 12, "bold"), bg="#ecf0f1", fg="#2c3e50").grid(
+                row=0, column=0, columnspan=2, pady=(15, 10))
+        
+        # Frame para credenciais
+        f_creds = tk.LabelFrame(win, text="Credenciais SMTP", bg="#ecf0f1", 
+                            font=("Arial", 10, "bold"))
+        f_creds.grid(row=1, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
+        f_creds.columnconfigure(1, weight=1)
+        
+        tk.Label(f_creds, text="Email:", bg="#ecf0f1").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        e1 = tk.Entry(f_creds, width=35)
         e1.grid(row=0, column=1, padx=5, pady=5)
         
-        Label(win, text="Senha:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        e2 = Entry(win, show="*", width=30)
+        tk.Label(f_creds, text="Senha:", bg="#ecf0f1").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        e2 = tk.Entry(f_creds, show="*", width=35)
         e2.grid(row=1, column=1, padx=5, pady=5)
         
-        Label(win, text="SMTP Server:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        e3 = Entry(win, width=30)
+        tk.Label(f_creds, text="SMTP Server:", bg="#ecf0f1").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        e3 = tk.Entry(f_creds, width=35)
         e3.insert(0, "smtp.gmail.com")
         e3.grid(row=2, column=1, padx=5, pady=5)
         
-        Label(win, text="SMTP Port:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        e4 = Entry(win, width=30)
+        tk.Label(f_creds, text="SMTP Port:", bg="#ecf0f1").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        e4 = tk.Entry(f_creds, width=35)
         e4.insert(0, "587")
         e4.grid(row=3, column=1, padx=5, pady=5)
         
-        Button(win, text="Salvar", command=lambda: [
-            self.security.salvar_credenciais(e1.get(), e2.get(), e3.get(), e4.get()),
-            messagebox.showinfo("Sucesso", "Credenciais salvas com segurança!"),
+        # Frame para destinatários
+        f_dest = tk.LabelFrame(win, text="Destinatários (separados por ;)", 
+                            bg="#ecf0f1", font=("Arial", 10, "bold"))
+        f_dest.grid(row=2, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
+        f_dest.columnconfigure(1, weight=1)
+        
+        tk.Label(f_dest, text="Para:", bg="#ecf0f1").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        e5 = tk.Entry(f_dest, width=45)
+        e5.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Carregar configurações existentes se houver
+        creds = self.security.obter_credenciais()
+        if creds:
+            e1.insert(0, creds.get('email', ''))
+            e2.insert(0, creds.get('senha', ''))
+            e3.delete(0, tk.END)
+            e3.insert(0, creds.get('server', 'smtp.gmail.com'))
+            e4.delete(0, tk.END)
+            e4.insert(0, creds.get('port', '587'))
+            
+            # Destinatários (pode estar em campo separado)
+            destinatarios = creds.get('destinatarios', '')
+            if destinatarios:
+                e5.insert(0, destinatarios)
+        
+        # Botões
+        f_buttons = tk.Frame(win, bg="#ecf0f1")
+        f_buttons.grid(row=3, column=0, columnspan=2, pady=20)
+        
+        def salvar():
+            # Salva credenciais
+            self.security.salvar_credenciais(
+                e1.get(), e2.get(), e3.get(), e4.get()
+            )
+            
+            # Salva destinatários em arquivo separado ou no mesmo dict
+            # Por simplicidade, vamos recarregar e adicionar
+            creds = self.security.obter_credenciais()
+            if creds:
+                creds['destinatarios'] = e5.get()
+                # Re-salva com destinatários
+                self.security.salvar_credenciais(
+                    creds['email'], creds['senha'], creds['server'], creds['port']
+                )
+                # TODO: Salvar destinatários em arquivo separado
+            
+            messagebox.showinfo("Sucesso", "Configurações salvas com segurança!")
             win.destroy()
-        ]).grid(row=4, column=0, columnspan=2, pady=20)
+        
+        def testar():
+            """Envia email de teste"""
+            try:
+                creds = {
+                    'email': e1.get(),
+                    'senha': e2.get(),
+                    'server': e3.get(),
+                    'port': e4.get()
+                }
+                
+                msg = MIMEText("Este é um email de teste do CIGS.\n\nConfiguração SMTP funcionando corretamente!")
+                msg['Subject'] = "🔧 CIGS - Teste de Configuração"
+                msg['From'] = e1.get()
+                msg['To'] = e1.get()
+                
+                server = smtplib.SMTP(e3.get(), int(e4.get()))
+                server.starttls()
+                server.login(e1.get(), e2.get())
+                server.send_message(msg)
+                server.quit()
+                
+                messagebox.showinfo("Sucesso", "Email de teste enviado com sucesso!")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha no teste: {str(e)}")
+        
+        tk.Button(f_buttons, text="📧 Testar", command=testar,
+                bg="#3498db", fg="white", font=("Arial", 10, "bold"),
+                padx=15, pady=5).pack(side="left", padx=5)
+        
+        tk.Button(f_buttons, text="💾 Salvar", command=salvar,
+                bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
+                padx=15, pady=5).pack(side="left", padx=5)
+        
+        tk.Button(f_buttons, text="❌ Cancelar", command=win.destroy,
+                bg="#e74c3c", fg="white", font=("Arial", 10, "bold"),
+                padx=15, pady=5).pack(side="left", padx=5)
     
     def show_about(self):
         """Exibe janela 'Sobre'"""
@@ -1163,3 +1333,15 @@ class CIGSApp:
             
         except Exception as e:
             self.log_visual(f"❌ Erro ao enviar email: {e}")
+
+
+
+
+
+
+
+
+
+
+
+    

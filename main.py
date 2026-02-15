@@ -12,6 +12,7 @@ from ttkthemes import ThemedTk
 # Importa a classe principal da aplicação CIGS
 from gui.main_window import CIGSApp
 
+
 # Bloco padrão de execução principal em Python
 if __name__ == "__main__":
     """
