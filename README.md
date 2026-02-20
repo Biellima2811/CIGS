@@ -1,15 +1,14 @@
 # 🐆 CIGS - Central de Comandos Integrados
 
-**Versão 3.4**  
-*"A selva nos une, a tecnologia nos protege."*
+**Versão 3.7.3 (Estável)**
 
-O **CIGS** é uma plataforma de orquestração tática para gerenciamento de servidores Windows em massa. Ele permite a atualização remota de sistemas, monitoramento de saúde (hardware/banco de dados), execução de scripts sob demanda e geração de relatórios operacionais, tudo através de uma interface gráfica amigável e uma arquitetura cliente-servidor robusta.
+O **CIGS** é uma plataforma de orquestração tática para gerenciamento de servidores Windows em massa. Ele permite a atualização remota de sistemas, monitoramento de saúde (hardware/banco de dados), execução de scripts sob demanda, geração de relatórios operacionais e muito mais, tudo através de uma interface gráfica amigável e uma arquitetura cliente-servidor robusta.
 
 ---
 
 ## 📌 Índice
 
-- [Visão Geral](#-visão-geral)
+- [Visão Geral](#-visão-eral)
 - [Funcionalidades Principais](#-funcionalidades-principais)
 - [Arquitetura do Sistema](#-arquitetura-do-sistema)
 - [Requisitos de Sistema](#-requisitos-de-sistema)
@@ -24,7 +23,8 @@ O **CIGS** é uma plataforma de orquestração tática para gerenciamento de ser
   - [Deploy do Agente](#5-deploy-do-agente)
   - [Clínica de Banco de Dados](#6-clínica-de-banco-de-dados)
   - [Dashboard](#7-dashboard)
-  - [Relatórios e Email](#8-relatórios-e-email)
+  - [Gerador WAR](#8-gerador-war)
+  - [Relatórios e Email](#9-relatórios-e-email)
 - [Compilação](#-compilação)
   - [Compilar a Central](#compilar-a-central)
   - [Compilar o Agente (Opcional)](#compilar-o-agente-opcional)
@@ -47,38 +47,41 @@ A comunicação entre Central e Agente é feita via API REST (HTTP), garantindo 
 
 ## ✨ Funcionalidades Principais
 
-- **Gerenciamento de servidores** – Cadastro manual, importação em massa via CSV, persistência em SQLite.
+- **Gerenciamento completo de servidores** – Cadastro manual, importação em massa via CSV (com suporte a credenciais específicas), edição e exclusão diretamente pela interface.
+- **Credenciais por servidor** – Possibilidade de definir usuário/senha específicos para cada servidor (ideal para máquinas com contas de parceiro diferenciadas). Nas operações (RDP, deploy, missão) o sistema prioriza as credenciais específicas e, caso não existam, usa as credenciais globais do painel superior.
 - **Scan de infraestrutura** – Verifica online/offline, versão do agente, número de clientes, latência, disco e RAM.
 - **Disparo de missões** – Atualização completa (download + extração) ou apenas execução local. Suporte a múltiplos scripts (`Executa.bat`, `ExecutaOnDemand.bat`) e parâmetros.
 - **Agendamento no Windows** – Cria tarefas no Task Scheduler com nomes padronizados, evitando poluição.
 - **Checklist pré-disparo** – Valida URL, arquivos locais e conectividade antes de iniciar a missão.
-- **Deploy remoto do agente** – Instala/atualiza o serviço CIGS_Agent em lote via rede.
-- **Monitoramento em tempo real** – Dashboard com gráficos de latência e disponibilidade.
-- **Clínica de banco de dados** – Executa diagnósticos e manutenção em Firebird (check, mend, sweep) e MSSQL.
+- **Deploy remoto do agente** – Instala/atualiza o serviço CIGS_Agent em lote via rede, agora utilizando as credenciais específicas de cada servidor.
+- **Monitoramento em tempo real** – Dashboard com gráficos de latência e disponibilidade, além de cartões de status coloridos.
+- **Clínica de banco de dados** – Executa diagnósticos e manutenção em Firebird (check, mend, sweep, backup, restore, automático) e MSSQL (checkdb, manutenção completa).
+- **Varredura de bancos de dados** – Localiza automaticamente arquivos .FDB nos servidores (compartilhamentos administrativos), usando as credenciais adequadas.
+- **Gerador WAR** – Cria múltiplos arquivos .war a partir de uma base e uma lista de nomes.
 - **Relatórios completos** – Geração de CSV, envio por email (com anexos) e sincronização com Google Sheets.
-- **Criptografia de credenciais** – Senhas de email armazenadas com segurança usando Fernet.
+- **Criptografia de credenciais** – Senhas de email armazenadas com segurança usando Fernet; senha mestra para acesso ao sistema (bcrypt + Fernet).
 - **Sanitização automática** – Corrige extrações de .rar que criam subpastas indesejadas.
 
 ---
 
 ## 🏗️ Arquitetura do Sistema
 ┌─────────────────┐ HTTP ┌─────────────────┐
-│ CENTRAL GUI │ ────── (JSON) ───────▶ │ AGENTE (Flask)│
-│ (Tkinter/ThemedTk) │ │ (Serviço Windows)│
+│ CENTRAL GUI │ ───── (JSON) ────▶ │ AGENTE (Flask) │
+│ (Tkinter/Themed)│ │ (Serviço Windows)│
 └─────────────────┘ └─────────────────┘
 │ │
 │ (SQLite) │ (Task Scheduler)
 ┌────▼────┐ ┌────▼────┐
-│ cigs_data.db │ │ Launcher.bat │
+│cigs_data.db│ │Launcher.bat│
 └──────────┘ └──────────┘
 │
 ┌────▼────┐
-│ Executa.bat │
+│Executa.bat│
 └──────────┘
 
 text
 
-- **Central:** Armazena servidores e histórico em SQLite, comunica-se com os agentes via requests.
+- **Central:** Armazena servidores e histórico em SQLite, comunica-se com os agentes via `requests`.
 - **Agente:** Serviço headless (sem GUI) que expõe uma API Flask. Executa downloads, extrações e agendamentos.
 - **Scripts:** O agente gera um `Launcher_{SISTEMA}.bat` que, quando executado pelo Task Scheduler, chama o script alvo (`Executa.bat` ou `ExecutaOnDemand.bat`) na raiz do sistema.
 
@@ -121,7 +124,7 @@ O banco SQLite (cigs_data.db) será criado automaticamente na primeira execuçã
 5. Execute a Central
 bash
 python main.py
-Na primeira execução, será solicitado um token de segurança. Utilize o KeyGen.py (fornecido) para gerar a contra-senha.
+Na primeira execução, será solicitada a criação de uma senha mestra. Utilize-a para acessar o sistema posteriormente.
 
 6. (Opcional) Compile a Central para distribuição
 Veja a seção Compilação.
@@ -145,7 +148,7 @@ Configurar o firewall (porta 5580)
 Iniciar o serviço
 
 Método 2 – Deploy remoto via Central
-Na Central, após cadastrar os servidores, utilize o botão 🛠️ Migrar Agente no painel de infraestrutura. A Central copiará os arquivos necessários e executará a instalação remotamente.
+Na Central, após cadastrar os servidores, utilize o botão 🛠️ Migrar Agente no painel de infraestrutura. A Central copiará os arquivos necessários e executará a instalação remotamente, utilizando as credenciais específicas de cada servidor (ou as globais, se não houver específicas).
 
 📖 Guia de Uso
 1. Painel Superior – Parâmetros da Missão
@@ -153,7 +156,7 @@ Link (AWS/S3): URL do pacote .rar a ser baixado.
 
 Data/Hora: Data e hora para agendamento (formato DD/MM/AAAA HH:MM).
 
-User/Senha: Credenciais de administrador do domínio/servidor.
+User/Senha: Credenciais de administrador do domínio/servidor (serão usadas como fallback caso o servidor não tenha credenciais próprias).
 
 Sistema: Selecione AC, AG, PONTO ou PATRIO.
 
@@ -166,13 +169,25 @@ Fonte: Nuvem (download) ou Rede Local (cópia de executável).
 2. Gerenciamento de Servidores
 Lista TXT: Carrega IPs de um arquivo texto simples.
 
-Importar CSV: Importa servidores em massa com template (IP;Hostname;IP_Publico;Funcao;Cliente).
+Importar CSV: Importa servidores em massa. O template agora inclui as colunas UsuarioEspecifico e SenhaEspecifica. Exemplo:
 
+text
+IP;Hostname;IP_Publico;Funcao;Cliente;UsuarioEspecifico;SenhaEspecifica
+192.168.1.50;SRV-APP01;200.1.1.50;APP;Cliente Exemplo;;
+192.168.1.51;SRV-BD01;200.1.1.51;BD;Cliente Exemplo;fortes\admin;senha123
 Carregar DB: Recarrega a lista a partir do banco SQLite.
 
-Novo Servidor: Cadastro manual via diálogo.
+Novo Servidor: Cadastro manual, com campos opcionais para usuário/senha específicos.
 
-Clique direito em um servidor: Acessar RDP ou copiar IP.
+Clique direito em um servidor: Menu com opções:
+
+Acessar RDP (usa credenciais específicas se disponíveis)
+
+Copiar IP
+
+Editar Servidor (altera todos os dados, inclusive credenciais)
+
+Excluir Servidor (remove do banco)
 
 3. Scan de Infraestrutura
 Clique em 📡 Scanear Infra. A Central verificará todos os servidores listados, exibindo:
@@ -202,23 +217,20 @@ Conectividade com o primeiro servidor selecionado
 
 Se tudo estiver OK, o botão AUTORIZAR DISPARO será habilitado.
 
-Ao autorizar, a missão é agendada no Windows de cada servidor.
+Ao autorizar, a missão é agendada no Windows de cada servidor (as credenciais específicas de cada um são respeitadas).
 
 Dica: Use ☢️ DISPARAR EM TODOS para selecionar todos os servidores de uma vez.
 
 5. Deploy do Agente
 Clique em 🛠️ Migrar Agente no painel de infraestrutura.
-
-A Central copiará os arquivos (CIGS_Agent.exe, nssm.exe, Instalar_CIGS.bat, UnRAR.exe) para cada servidor e executará a instalação remota via WMIC.
-
-O progresso é mostrado na barra e no log.
+A Central copiará os arquivos (CIGS_Agent.exe, nssm.exe, Instalar_CIGS.bat, UnRAR.exe) para cada servidor e executará a instalação remota via WMIC, utilizando as credenciais específicas de cada servidor (fallback para as globais). O progresso é mostrado na barra e no log.
 
 6. Clínica de Banco de Dados
 Selecione o motor (Firebird ou MSSQL).
 
-Informe o caminho/nome do banco.
+Informe o caminho/nome do banco (ou utilize o botão 🔍 Scan para localizar bancos no servidor selecionado).
 
-Escolha a operação: Check, Mend, Sweep, Backup, Restore ou Manutenção Automática.
+Escolha a operação: Check, Mend, Sweep, Backup, Restore, Manutenção Automática (Firebird) ou CheckDB/Manutenção Completa (MSSQL).
 
 A Central executará o comando remoto em todos os servidores selecionados (ou online).
 
@@ -227,14 +239,19 @@ Gráfico de Linha: Latência média dos últimos 30 scans.
 
 Gráfico de Pizza: Disponibilidade atual (online vs offline).
 
-Monitoramento em Tempo Real: Cartões coloridos mostrando status atual de cada servidor (atualize com o botão 🔄).
+Monitoramento em Tempo Real: Cartões coloridos mostrando status atual de cada servidor (atualize com o botão 🔄). As credenciais específicas são usadas para a consulta de status.
 
-8. Relatórios e Email
+8. Gerador WAR
+Selecione um arquivo de nomes (.txt, um nome por linha), um arquivo base .war e uma pasta de destino.
+
+Clique em Gerar Cópias para criar múltiplos arquivos .war (cada um com o nome da lista).
+
+9. Relatórios e Email
 Clique em 📊 Ver Relatório.
 
 A Central coleta dados de execução de todos os servidores online e gera um CSV.
 
-Se configurado, envia o relatório por email com estatísticas detalhadas e anexos.
+Se configurado, envia o relatório por email com estatísticas detalhadas e anexos (CSV e log).
 
 Opcionalmente, sincroniza com uma planilha do Google Sheets (necessário credenciais.json).
 
@@ -245,7 +262,7 @@ Compilar a Central
 Use o PyInstaller para gerar um executável único:
 
 bash
-pyinstaller --noconsole --onefile --clean --noconfirm --name="CIGS_Central_3.4" --icon="assets/CIGS.ico" --collect-all ttkthemes --collect-all cryptography --collect-all matplotlib --collect-all tkcalendar --collect-all PIL --add-data "cigs_data.db;." --add-data "CIGS.key;." main.py
+pyinstaller --noconsole --onefile --clean --noconfirm --noupx --name="CIGS_Central_v3.7.3" --icon="assets/CIGS.ico" --collect-all ttkthemes --collect-all cryptography --collect-all matplotlib --collect-all tkcalendar --collect-all PIL main.py
 Arquivos que devem estar na mesma pasta do executável (ou na pasta de distribuição):
 
 nssm.exe
@@ -260,6 +277,8 @@ cigs_data.db (opcional, será criado se não existir)
 
 CIGS.key (será gerado na primeira execução)
 
+credenciais.json (para integração com Google Sheets, opcional)
+
 Compilar o Agente (opcional)
 Recomenda-se usar o Nuitka para gerar um executável standalone do agente, com melhor performance e ofuscação:
 
@@ -272,19 +291,17 @@ Sintoma	Causa Provável	Solução
 Central não inicia	Conflito de layout (Pack vs Grid)	Verifique se todos os widgets usam apenas grid() ou apenas pack().
 Agente não responde	Serviço parado ou porta bloqueada	Execute sc query CIGS_Service no servidor. Libere a porta 5580 no firewall.
 Erro "Script não encontrado"	Caminho do script incorreto	Verifique se Executa.bat está na raiz do sistema (ex: C:\Atualiza\CloudUp\CloudUpCmd\AC).
-Falha na autenticação de rede	Credenciais inválidas ou sem permissão	Use um usuário com privilégios administrativos no domínio/servidor.
+Falha na autenticação de rede	Credenciais inválidas ou sem permissão	Use um usuário com privilégios administrativos no domínio/servidor. Verifique as credenciais específicas do servidor.
 Download falha	Link expirado ou sem acesso à internet	Teste o link no navegador. Verifique se o servidor tem acesso à internet.
 Extrações criam subpastas	Sanitização não executada	Verifique se o --sanitize está sendo chamado no Launcher.bat gerado.
 Email não enviado	Credenciais SMTP incorretas ou porta bloqueada	Use a função Testar na janela de configuração de email.
 Dashboard sem dados	Nenhum scan realizado	Execute um scan completo primeiro.
+Servidor com credenciais próprias não usa‑as	Lógica não implementada na operação	Verifique se a função obter_credenciais_servidor(ip) está sendo chamada na rotina (ex: no worker_deploy, worker_disparo, etc.). Todas as operações principais já foram adaptadas.
 🤝 Contribuição e Suporte
 Desenvolvido por: Gabriel Levi · Fortes Tecnologia
-
 Ano: 2026
+Versão Atual: 3.7.3
 
 Issues e sugestões: Abra uma issue no repositório oficial ou entre em contato com a equipe de infraestrutura.
 
 Contribuições: Pull requests são bem-vindos! Por favor, siga as boas práticas de código e documente as alterações.
-
-📄 Licença
-Este projeto é propriedade da Fortes Tecnologia e seu uso é restrito a ambientes internos da empresa. A redistribuição ou modificação sem autorização expressa é proibida.
