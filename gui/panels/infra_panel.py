@@ -79,6 +79,10 @@ class InfraPanel(ttk.Frame):
         self.menu.add_command(label="🖥️ Acessar RDP", command=self.call_rdp)
         # Opção para copiar IP
         self.menu.add_command(label="📋 Copiar IP", command=self.copy_ip)
+        self.menu.add_separator() # Linha divisória
+        self.menu.add_command(label="✏️ Editar Servidor", command=self.call_edit)
+        self.menu.add_command(label="🗑️ Excluir Servidor", command=self.call_delete)
+
         # Associa o clique direito à função show_menu
         self.tree.bind("<Button-3>", self.show_menu)
 
@@ -107,3 +111,15 @@ class InfraPanel(ttk.Frame):
             ip = self.tree.item(sel[0])['values'][0]
             self.clipboard_clear()
             self.clipboard_append(ip)
+    
+    def call_edit(self):
+        sel = self.tree.selection()
+        if sel:
+            ip = self.tree.item(sel[0])['values'][0]
+            self.cb['edit_server'](ip)
+
+    def call_delete(self):
+        sel = self.tree.selection()
+        if sel:
+            ip = self.tree.item(sel[0])['values'][0]
+            self.cb['delete_server'](ip)

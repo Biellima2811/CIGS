@@ -2,13 +2,20 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 class AddServerDialog(tk.Toplevel):
-    def __init__(self, parent, callback_salvar):
+    def __init__(self, parent, callback_salvar, servidor_atual=None):
         super().__init__(parent)
-        self.title("Registrar Novo Servidor")
+        self.servidor_atual = servidor_atual # Guarda os dados se for edição
+        # Muda o título dinamicamente
+        titulo = "Editar Servidor" if servidor_atual else "Registrar Novo Servidor"
+        self.title(titulo)
+
         self.geometry("420x400")
         self.resizable(False, False)  # trava tamanho para não deformar
         self.callback = callback_salvar
         self.setup_ui()
+
+        if self.servidor_atual:
+            self.preencher_dados()
 
     def setup_ui(self):
         # Frame principal de cadastro
@@ -70,7 +77,21 @@ class AddServerDialog(tk.Toplevel):
         if not dados['ip']:
             messagebox.showwarning("Atenção", "O IP é obrigatório!")
             return
-
+        
         # Chama a função do pai para salvar no banco
         self.callback(dados)
         self.destroy()
+
+    def preencher_dados(self):
+        """Preenche os campos com os dados existentes do servidor"""
+        self.ent_ip.insert(0, self.servidor_atual.get('ip', ''))
+        self.ent_host.insert(0, self.servidor_atual.get('hostname', ''))
+        self.ent_pub.insert(0, self.servidor_atual.get('ip_publico', ''))
+        self.cb_func.set(self.servidor_atual.get('funcao', ''))
+        self.ent_cli.insert(0, self.servidor_atual.get('cliente', ''))
+        
+        # Preenche as credenciais customizadas se existirem
+        if self.servidor_atual.get('usuario_especifico'):
+            self.ent_usuario.insert(0, self.servidor_atual['usuario_especifico'])
+        if self.servidor_atual.get('senha_especifica'):
+            self.ent_senha.insert(0, self.servidor_atual['senha_especifica'])

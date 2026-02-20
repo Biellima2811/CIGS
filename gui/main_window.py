@@ -144,7 +144,7 @@ class CIGSApp:
     
     def setup_window(self):
         """Configura as propriedades da janela principal"""
-        self.root.title("CIGS - Central de Comandos Integrados v3.4")
+        self.root.title("CIGS - Central de Comandos Integrados Versão 3.7.3 (Estavel)")
         self.root.geometry("1280x850")
         try: self.root.state('zoomed')
         except: pass
@@ -203,7 +203,9 @@ class CIGSApp:
             'load_ips': self.btn_carregar_padrao, 
             'import_csv': self.btn_importar_csv_bd,
             'load_db': self.carregar_servidores_db,
-            'add_server': self.abrir_add_server
+            'add_server': self.abrir_add_server,
+            'edit_server': self.abrir_edit_server,   # NOVO
+            'delete_server': self.deletar_servidor   # NOVO
         })
         self.pages["infra"] = self.infra_panel
         
@@ -371,6 +373,42 @@ class CIGSApp:
         except Exception:
             pass
         return None, None
+    
+    def deletar_servidor(self, ip):
+        """Confirma e remove o servidor do banco de dados"""
+        resposta = messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja remover o servidor {ip}?")
+        if resposta:
+            self.db.remover_servidor(ip)
+            self.log_visual(f"🗑️ Servidor {ip} removido do banco.")
+            self.carregar_servidores_db() # Atualiza a tabela na tela
+
+    def abrir_edit_server(self, ip):
+        """Busca os dados do IP e abre a tela em modo edição"""
+        servidor_dados = self.db.buscar_servidor_por_ip(ip)
+        
+        if servidor_dados:
+            # Passamos os dados atuais para a tela
+            AddServerDialog(self.root, lambda novos_dados: self.salvar_edicao_servidor(ip, novos_dados), servidor_dados)
+        else:
+            messagebox.showerror("Erro", "Servidor não encontrado no banco de dados!")
+
+    def salvar_edicao_servidor(self, ip_antigo, dados):
+        """Salva as alterações do servidor no banco e atualiza a tela"""
+        suc, msg = self.db.atualizar_servidor(
+            ip_antigo,
+            dados['ip'], 
+            dados['host'], 
+            dados['pub'], 
+            dados['func'], 
+            dados['cli'],
+            dados.get('usuario'), 
+            dados.get('senha')
+        )
+        if suc:
+            self.log_visual(f"✏️ Servidor {ip_antigo} atualizado com sucesso.")
+            self.carregar_servidores_db()
+        else:
+            messagebox.showerror("Erro BD", msg)
 
     def btn_carregar_padrao(self):
         """Carrega lista de IPs a partir de arquivo TXT"""
@@ -1364,7 +1402,7 @@ class CIGSApp:
         """Exibe janela 'Sobre'"""
         messagebox.showinfo("CIGS", 
                            "Central de Comandos Integrados\n"
-                           "Versão 3.7 (Full Fix)\n"
+                           "Versão 3.7.3 (Estavel)\n"
                            "Desenvolvido por Gabriel Levi\n"
                            "Fortes Tecnologia - 2026")
     

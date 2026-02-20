@@ -100,3 +100,28 @@ class CIGSDatabase:
         dados = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return dados[::-1] # Inverte para ficar cronológico
+    
+    def atualizar_servidor(self, ip_antigo, novo_ip, host, pub, func, cli, usuario=None, senha=None):
+        try:
+            conn = self.get_connection()
+            conn.execute("""
+                UPDATE servidores 
+                SET ip = ?, hostname = ?, ip_publico = ?, funcao = ?, cliente = ?, usuario_especifico = ?, senha_especifica = ?
+                WHERE ip = ?
+            """, (novo_ip, host, pub, func, cli, usuario, senha, ip_antigo))
+            conn.commit()
+            conn.close()
+            return True, 'Servidor atualizado com sucesso'
+        except sqlite3.IntegrityError:
+            return False, "Erro: O novo IP já está cadastrado em outro servidor"
+        except Exception as e:
+            return False, f'Erro BD: {str(e)}'
+    
+    def buscar_servidor_por_ip(self, ip):
+        """Busca todos os dados de um servidor específico pelo IP"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("SELECT * FROM servidores WHERE ip = ?", (ip,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
