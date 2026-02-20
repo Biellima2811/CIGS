@@ -1,6 +1,7 @@
 # 🐆 CIGS - Central de Comandos Integrados
 
 **Versão 3.4**  
+*"A selva nos une, a tecnologia nos protege."*
 
 O **CIGS** é uma plataforma de orquestração tática para gerenciamento de servidores Windows em massa. Ele permite a atualização remota de sistemas, monitoramento de saúde (hardware/banco de dados), execução de scripts sob demanda e geração de relatórios operacionais, tudo através de uma interface gráfica amigável e uma arquitetura cliente-servidor robusta.
 
@@ -29,7 +30,7 @@ O **CIGS** é uma plataforma de orquestração tática para gerenciamento de ser
   - [Compilar o Agente (Opcional)](#compilar-o-agente-opcional)
 - [Resolução de Problemas (Troubleshooting)](#-resolução-de-problemas-troubleshooting)
 - [Contribuição e Suporte](#-contribuição-e-suporte)
-
+- [Licença](#-licença)
 
 ---
 
@@ -284,3 +285,6 @@ Ano: 2026
 Issues e sugestões: Abra uma issue no repositório oficial ou entre em contato com a equipe de infraestrutura.
 
 Contribuições: Pull requests são bem-vindos! Por favor, siga as boas práticas de código e documente as alterações.
+
+📄 Licença
+Este projeto é propriedade da Fortes Tecnologia e seu uso é restrito a ambientes internos da empresa. A redistribuição ou modificação sem autorização expressa é proibida.

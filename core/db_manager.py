@@ -26,6 +26,8 @@ class CIGSDatabase:
                 ip_publico TEXT,
                 funcao TEXT,
                 cliente TEXT,
+                usuario_especifico TEXT,
+                senha_especifica TEXT,
                 criado_em DATETIME
             )
         """)
@@ -44,13 +46,13 @@ class CIGSDatabase:
         conn.commit()
         conn.close()
 
-    def adicionar_servidor(self, ip, host, pub, func, cli):
+    def adicionar_servidor(self, ip, host, pub, func, cli, usuario=None, senha=None):
         try:
             conn = self.get_connection()
             conn.execute("""
-                INSERT INTO servidores (ip, hostname, ip_publico, funcao, cliente, criado_em)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (ip, host, pub, func, cli, datetime.now()))
+                INSERT INTO servidores (ip, hostname, ip_publico, funcao, cliente, usuario_especifico, senha_especifica, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (ip, host, pub, func, cli , usuario, senha, datetime.now()))
             conn.commit()
             conn.close()
             # RETORNO CORRETO: (Booleano, String)

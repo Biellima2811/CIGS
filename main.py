@@ -40,9 +40,13 @@ if __name__ == "__main__":
     # Instancia a aplicação CIGS passando a janela raiz como parâmetro
     app = CIGSApp(root)
     
-    if root.winfo_exists():
-        root.deiconify() # Mostra a janela principal agora que carregou
-        root.mainloop()
+    try:
+        if root.winfo_exists():
+            root.deiconify()
+            root.mainloop()
+    except tk.TclError:
+        # Janela já foi destruída (autenticação falhou)
+        pass
 
 # Fluxo de Execução:
 # -----------------

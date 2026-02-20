@@ -5,7 +5,7 @@ class AddServerDialog(tk.Toplevel):
     def __init__(self, parent, callback_salvar):
         super().__init__(parent)
         self.title("Registrar Novo Servidor")
-        self.geometry("420x320")
+        self.geometry("420x400")
         self.resizable(False, False)  # trava tamanho para não deformar
         self.callback = callback_salvar
         self.setup_ui()
@@ -43,6 +43,16 @@ class AddServerDialog(tk.Toplevel):
         self.ent_cli = ttk.Entry(frame)
         self.ent_cli.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
 
+            # Linha 5: Usuário específico (opcional)
+        ttk.Label(frame, text='Usuário específico (opcional):').grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        self.ent_usuario = ttk.Entry(frame)
+        self.ent_usuario.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
+
+        # Linha 6: Senha específica (opcional)
+        ttk.Label(frame, text='Senha específica (opcional):').grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        self.ent_senha = ttk.Entry(frame, show="*")
+        self.ent_senha.grid(row=6, column=1, padx=5, pady=5, sticky="ew")
+
         # Botão de salvar (fora do frame, alinhado embaixo)
         ttk.Button(self, text="💾 SALVAR DADOS", command=self.salvar).grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
@@ -52,7 +62,9 @@ class AddServerDialog(tk.Toplevel):
             'host': self.ent_host.get().strip(),
             'pub': self.ent_pub.get().strip(),
             'func': self.cb_func.get().strip(),
-            'cli': self.ent_cli.get().strip()
+            'cli': self.ent_cli.get().strip(),
+            'usuario' : self.ent_usuario.get().strip() or None,
+            'senha' : self.ent_senha.get().strip() or None
         }
         
         if not dados['ip']:

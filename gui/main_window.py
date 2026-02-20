@@ -36,6 +36,7 @@ from gui.panels.infra_panel import InfraPanel
 from gui.panels.db_panel import DbPanel
 from gui.panels.dashboard_panel import DashboardPanel
 from gui.dialogs.add_server_dialog import AddServerDialog
+from gui.panels.war_generator import WarGeneratorPanel
 
 class CIGSApp:
     """
@@ -44,59 +45,26 @@ class CIGSApp:
     
     def __init__(self, root):
         self.root = root
-
-        # --- 1. BLOCO DE SEGURANÇA (Token) ---
-        desafio = str(random.randint(100000, 999999))
-        seed = "CIGS_2026_ELITE"
-        raw = f"{seed}{desafio}"
-        resposta_correta = hashlib.sha256(raw.encode()).hexdigest()[:6].upper()
-    
-        # Janela de Bloqueio
-        auth_win = tk.Toplevel(root)
-        auth_win.title("🔒 ACESSO BLOQUEADO")
-        auth_win.geometry("350x250")
-        auth_win.grab_set()
-        auth_win.resizable(False, False)
-
-        auth_win.columnconfigure(0, weight=1)
-        auth_win.columnconfigure(1, weight=1)
-
-        tk.Label(auth_win, text="PROTOCOLO DE SEGURANÇA ATIVO",
-             font=("Arial", 10, "bold"), fg="red").grid(row=0, column=0, columnspan=2, pady=(15, 5), sticky="ew")
-
-        tk.Label(auth_win, text=f"TOKEN DE ACESSO: {desafio}",
-             font=("Impact", 24), fg="#2980b9").grid(row=1, column=0, columnspan=2, pady=5, sticky="ew")
-
-        tk.Label(auth_win, text="Insira a contra-senha do KeyGen:",
-             font=("Arial", 9)).grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
-
-        ent_senha = ttk.Entry(auth_win, font=("Arial", 14), justify="center", show="*")
-        ent_senha.grid(row=3, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
-        ent_senha.focus()
-
+        # Dentro de __init__, após criar self.security
         self.auth_ok = False
 
-        def verificar(event=None):
-            if ent_senha.get().strip().upper() == resposta_correta or ent_senha.get() == "admin_resgate":
-                self.auth_ok = True
-                auth_win.destroy()
-            else:
-                messagebox.showerror("ERRO", "Contra-senha incorreta! Acesso negado.")
-                ent_senha.delete(0, tk.END)
-
-        auth_win.bind('<Return>', verificar)
-        ttk.Button(auth_win, text="🔓 DESBLOQUEAR", command=verificar).grid(row=4, column=0, columnspan=2, pady=15, sticky="ew")
-        self.root.wait_window(auth_win)
-    
-        if not self.auth_ok:
-            root.destroy()
-            return
-        
         self.db = CIGSDatabase() 
         self.core = CIGSCore()
         self.sheets = CIGSSheets()
         self.security = CIGSSecurity()
         self.email_manager = CIGSEmailManager(self.security)
+        
+        # Verifica se já existe senha mestra configurada
+        if not os.path.exists(self.security.ARQUIVO_SENHA):
+            # Primeira execução: solicitar criação da senha
+            self._criar_senha_mestra()
+        else:
+             # Já configurado: solicitar login
+            self._fazer_login()
+        
+        if not self.auth_ok:
+            root.destroy()
+            return
         
         self.monitor_active = False 
         self.setup_window()
@@ -106,7 +74,69 @@ class CIGSApp:
         self.monitor_active = True
         self.monitor_thread()
         self.root.after(500, self.carregar_servidores_db)
-        
+
+    def _criar_senha_mestra(self):
+        """Janela para definir a senha mestra na primeira execução."""
+        win = tk.Toplevel(self.root)
+        win.title("Configuração Inicial - CIGS")
+        win.geometry("400x250")
+        win.grab_set()
+        win.resizable(False, False)
+
+        tk.Label(win, text="Defina a senha mestra do sistema", font=("Arial", 12, "bold")).pack(pady=20)
+
+        tk.Label(win, text="Nova senha:").pack()
+        entry_senha1 = tk.Entry(win, show="*", width=30)
+        entry_senha1.pack(pady=5)
+
+        tk.Label(win, text="Confirme a senha:").pack()
+        entry_senha2 = tk.Entry(win, show="*", width=30)
+        entry_senha2.pack(pady=5)
+
+        def confirmar():
+            senha1 = entry_senha1.get()
+            senha2 = entry_senha2.get()
+            if not senha1:
+                messagebox.showerror("Erro", "A senha não pode estar vazia.")
+                return
+            if senha1 != senha2:
+                messagebox.showerror("Erro", "As senhas não coincidem.")
+                return
+            self.security.definir_senha_mestra(senha1)
+            self.auth_ok = True
+            win.destroy()
+
+        tk.Button(win, text="Confirmar", command=confirmar, bg="#27ae60", fg="white", padx=20, pady=5).pack(pady=20)
+
+        self.root.wait_window(win)
+
+    def _fazer_login(self):
+        """Janela de login com senha mestra."""
+        win = tk.Toplevel(self.root)
+        win.title("Acesso ao CIGS")
+        win.geometry("350x200")
+        win.grab_set()
+        win.resizable(False, False)
+
+        tk.Label(win, text="CIGS - Central de Comandos", font=("Arial", 14, "bold")).pack(pady=20)
+
+        tk.Label(win, text="Senha mestra:").pack()
+        entry_senha = tk.Entry(win, show="*", width=30)
+        entry_senha.pack(pady=5)
+        entry_senha.focus()
+
+        def verificar():
+            if self.security.verificar_senha_mestra(entry_senha.get()):
+                self.auth_ok = True
+                win.destroy()
+            else:
+                messagebox.showerror("Erro", "Senha incorreta!")
+                entry_senha.delete(0, tk.END)
+
+        win.bind('<Return>', lambda e: verificar())
+        tk.Button(win, text="Entrar", command=verificar, bg="#2980b9", fg="white", padx=20, pady=5).pack(pady=20)
+
+        self.root.wait_window(win)
     # ==========================================
     # CONFIGURAÇÃO DA INTERFACE
     # ==========================================
@@ -145,6 +175,9 @@ class CIGSApp:
         self.btn_db = tk.Button(self.frame_sidebar, text="🏥  CLÍNICA BD", command=lambda: self.show_page("db"), **btn_style)
         self.btn_db.pack(fill="x", pady=2)
 
+        self.btn_war = tk.Button(self.frame_sidebar, text="📦  GERADOR WAR", command=lambda: self.show_page("war"), **btn_style)
+        self.btn_war.pack(fill="x", pady=2)
+
         # --- CONTEÚDO ---
         self.frame_content = tk.Frame(self.paned, bg="#ecf0f1")
         self.paned.add(self.frame_content, stretch="always")
@@ -181,6 +214,9 @@ class CIGSApp:
                                self.iniciar_scan_bancos, 
                                self.iniciar_agendamento)
         self.pages["db"] = self.db_panel
+
+        self.war_panel = WarGeneratorPanel(self.container, self.log_visual, self.update_progress)
+        self.pages["war"] = self.war_panel
 
         # Posiciona todos os painéis no mesmo grid
         for p in self.pages.values(): 
@@ -227,9 +263,11 @@ class CIGSApp:
         self.btn_infra.config(bg=def_bg)
         self.btn_dash.config(bg=def_bg)
         self.btn_db.config(bg=def_bg)
+        self.btn_war.config(bg=def_bg)
         if name == "infra": self.btn_infra.config(bg="#2980b9")
         if name == "dash": self.btn_dash.config(bg="#2980b9")
         if name == "db": self.btn_db.config(bg="#2980b9")
+        if name == "war": self.btn_war.config(bg="#2980b9")
     
     def setup_menu(self):
         """Configura a barra de menus superior da aplicação"""
@@ -1277,7 +1315,7 @@ class CIGSApp:
         """Exibe janela 'Sobre'"""
         messagebox.showinfo("CIGS", 
                            "Central de Comandos Integrados\n"
-                           "Versão 3.4 (Full Fix)\n"
+                           "Versão 3.7 (Full Fix)\n"
                            "Desenvolvido por Gabriel Levi\n"
                            "Fortes Tecnologia - 2026")
     

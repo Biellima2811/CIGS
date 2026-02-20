@@ -4,6 +4,7 @@ import os
 import json
 # Importa a classe Fernet da biblioteca 'cryptography' para criptografia simétrica
 from cryptography.fernet import Fernet
+import bcrypt
 
 # Define a classe responsável pela segurança e armazenamento criptografado
 class CIGSSecurity:
@@ -71,3 +72,27 @@ class CIGSSecurity:
         except:
             # Se ocorrer erro (chave errada ou arquivo corrompido), retorna None
             return None
+    # --- NOVOS MÉTODOS PARA SENHA MESTRA ---
+    ARQUIVO_SENHA = 'CIGS_master.dat'
+    def definir_senha_mestra(self, senha):
+        """Cria e armazena o hash da senha mestra (primeira execução)."""
+        salt = bcrypt.gensalt()
+        hash_senha = bcrypt.hashpw(senha.encode('utf-8'), salt)
+        # Criptografa o hash antes de salvar
+        hash_cripto = self.fernet.encrypt(hash_senha)
+        with open(self.ARQUIVO_SENHA, 'wb') as f:
+            f.write(hash_cripto)
+        return True
+    
+    def verificar_senha_mestra(self, senha):
+        """Verifica se a senha fornecida corresponde à hash armazenada."""
+        if not os.path.exists(self.ARQUIVO_SENHA):
+            return False
+        
+        try:
+            with open(self.ARQUIVO_SENHA, 'rb') as f:
+                hash_cripto = f.read()
+            hash_senha = self.fernet.decrypt(hash_cripto)
+            return bcrypt.checkpw(senha.encode('utf-8'), hash_senha)
+        except:
+            return False

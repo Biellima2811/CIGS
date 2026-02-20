@@ -162,18 +162,21 @@ exit
         else:
             d_str = datetime.now().strftime("%d/%m/%Y")
             h_str = "03:00"
-
+    
         task_name = f"CIGS_Update_{sistema.upper()}"
-        cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
+    
+        # Usa o usuário e senha fornecidos se ambos estiverem preenchidos; caso contrário, usa SYSTEM
+        if usuario and senha:
+            cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
+        else:
+            cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
+    
         res = subprocess.run(cmd_sch, shell=True, capture_output=True, text=True)
-
+    
         if res.returncode == 0:
-            log_debug(f"Agendamento realizado com SUCESSO: {task_name}", sistema)
+            log_debug(f"Agendamento realizado com SUCESSO: {task_name} com usuário {usuario if usuario else 'SYSTEM'}", sistema)
             return True, "Agendado"
         else:
-            cmd_user = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
-            if subprocess.run(cmd_user, shell=True).returncode == 0:
-                return True, "Agendado (User)"
             log_debug(f"Erro Schtasks: {res.stderr}", sistema)
             return False, f"Erro Task: {res.stderr}"
     except Exception as e:
