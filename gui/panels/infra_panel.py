@@ -71,6 +71,7 @@ class InfraPanel(ttk.Frame):
         self.tree.tag_configure("SUCESSO", background="#b8e994")  # Verde claro
         self.tree.tag_configure("CRITICO", background="#e74c3c", foreground="white") # Vermelho forte
         self.tree.tag_configure("DEDICADO", background="#fff0b3") # Amarelo claro
+        self.tree.tag_configure("CREDENCIAL_PROPRIA", background="#d1f2eb")  # verde água
 
         # Menu de contexto (clique direito)
         self.menu = Menu(self, tearoff=0)

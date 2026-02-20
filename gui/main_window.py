@@ -21,6 +21,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 import tkinter.simpledialog as simpledialog
+import sqlite3
 
 # Imports do Núcleo
 from core.network_ops import CIGSCore
@@ -322,7 +323,13 @@ class CIGSApp:
     
     def salvar_novo_servidor(self, dados):
         """Salva no SQLite e atualiza a tela"""
-        suc, msg = self.db.adicionar_servidor(dados['ip'], dados['host'], dados['pub'], dados['func'], dados['cli'])
+        suc, msg = self.db.adicionar_servidor(dados['ip'], 
+                                              dados['host'], 
+                                              dados['pub'], 
+                                              dados['func'], 
+                                              dados['cli'],
+                                              dados.get('usuario'), 
+                                              dados.get('senha'))
         if suc:
             messagebox.showinfo("Sucesso", msg)
             self.carregar_servidores_db()
@@ -336,14 +343,34 @@ class CIGSApp:
             self.infra_panel.tree.delete(*self.infra_panel.tree.get_children())
             
             for s in servidores:
+                tags = ("DEDICADO",)
+                if s.get('usuario_especifico'):
+                    tags = ("DEDICADO", "CREDENCIAL_PROPRIA")
                 self.infra_panel.tree.insert("", "end", values=(
                     s['ip'], s['hostname'], s['ip_publico'], s['funcao'], s['cliente'], "...", "-"
-                ), tags=("DEDICADO",))
+                ), tags=tags)
             
             self.log_visual(f"Base de Dados: {len(servidores)} ativos carregados.")
             self.dash_panel.update_plots()
         except Exception as e:
             self.log_visual(f"Erro ao carregar DB: {e}")
+            
+    def obter_credenciais_servidor(self, ip):
+        """Retorna (usuario, senha) específicos do servidor ou (None, None)."""
+        try:
+            conn = self.db.get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT usuario_especifico, senha_especifica FROM servidores WHERE ip = ?", 
+                (ip,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row['usuario_especifico']:
+                return row['usuario_especifico'], row['senha_especifica']
+        except Exception:
+            pass
+        return None, None
 
     def btn_carregar_padrao(self):
         """Carrega lista de IPs a partir de arquivo TXT"""
@@ -383,9 +410,9 @@ class CIGSApp:
             if path:
                 try:
                     with open(path, 'w', newline='', encoding='utf-8') as f:
-                        f.write("IP;Hostname;IP_Publico;Funcao;Cliente\n")
-                        f.write("192.168.1.50;SRV-APP01;200.1.1.50;APP;Cliente Exemplo\n")
-                        f.write("192.168.1.51;SRV-BD01;200.1.1.51;BD;Cliente Exemplo\n")
+                        f.write("IP;Hostname;IP_Publico;Funcao;Cliente;UsuarioEspecifico;SenhaEspecifica\n")
+                        f.write("192.168.1.50;SRV-APP01;200.1.1.50;APP;Cliente Exemplo;;\n")
+                        f.write("192.168.1.51;SRV-BD01;200.1.1.51;BD;Cliente Exemplo;fortes\\admin;senha123\n")
                     messagebox.showinfo("Sucesso", f"Template gerado em:\n{path}")
                     try: os.startfile(path)
                     except: pass
@@ -417,7 +444,9 @@ class CIGSApp:
                         row.get('Hostname', '-'), 
                         row.get('IP_Publico', '-'), 
                         row.get('Funcao', 'SRV'), 
-                        row.get('Cliente', 'Generico')
+                        row.get('Cliente', 'Generico'),
+                        row.get('UsuarioEspecifico', '').strip() or None,
+                        row.get('SenhaEspecifica', '').strip() or None
                     )
                     
                     if suc: sucessos += 1
@@ -659,7 +688,11 @@ class CIGSApp:
                 continue
 
             dest_dir = f"\\\\{ip}\\C$\\CIGS"
-            
+            user_esp, pass_esp = self.obter_credenciais_servidor(ip)
+            dados_painel = self.top_panel.get_data()
+            user = user_esp if user_esp else dados_painel['user'].strip()
+            password = pass_esp if pass_esp else dados_painel['pass'].strip()
+
             try:
                 self.log_visual(f"🔑 {ip}: Autenticando...")
                 subprocess.run(f'net use \\\\{ip}\\C$ /delete', shell=True, stdout=subprocess.DEVNULL)
@@ -835,6 +868,10 @@ class CIGSApp:
         for item_id in selecionados:
             item = self.infra_panel.tree.item(item_id)
             ip = item['values'][0]
+            user_esp, pass_esp = self.obter_credenciais_servidor(ip)
+            user_atual = user_esp if user_esp else d['user']
+            pass_atual = pass_esp if pass_esp else d['pass']
+
             
             if cnt > 0 and cnt % 10 == 0:
                 db += timedelta(minutes=15)
@@ -856,7 +893,7 @@ class CIGSApp:
                 except:
                     try:
                         self.log_visual(f"-> {ip}: Autenticando...")
-                        subprocess.run(f'net use \\\\{ip}\\C$ /user:{d["user"]} {d["pass"]}', 
+                        subprocess.run(f'net use \\\\{ip}\\C$ /user:{user_atual} {pass_atual}', 
                                      shell=True, stdout=subprocess.DEVNULL)
                         subprocess.run(f'mkdir "{path_dir}"', shell=True, stdout=subprocess.DEVNULL)
                         subprocess.run(f'copy /Y "{local_exe}" "{dest}"', shell=True, 
@@ -873,8 +910,13 @@ class CIGSApp:
                     nome = "up.rar"
                 
                 suc, msg = self.core.enviar_ordem_agendamento(
-                    ip, d['url'], nome, dt_str, 
-                    d['user'], d['pass'], d['sistema'], modo,
+                    ip, 
+                    d['url'], 
+                    nome, dt_str, 
+                    user_atual, 
+                    pass_atual, 
+                    d['sistema'], 
+                    modo,
                     script=d['script'], params=d['params']
                 )
             else:
@@ -906,9 +948,13 @@ class CIGSApp:
     
     def rdp_connect(self, ip):
         """Estabelece conexão RDP com servidor"""
+        user_esp, pass_esp = self.obter_credenciais_servidor(ip)
         d = self.top_panel.get_data()
+        user = user_esp if user_esp else d['user']
+        password = pass_esp if pass_esp else d['pass']
+
         try:
-            subprocess.run(f'cmdkey /generic:TERMSRV/{ip} /user:"{d["user"]}" /pass:"{d["pass"]}"', shell=True)
+            subprocess.run(f'cmdkey /generic:TERMSRV/{ip} /user:"{user}" /pass:"{password}"', shell=True)
             subprocess.Popen(f'mstsc /v:{ip} /admin', shell=True)
         except Exception as e:
             messagebox.showerror("Erro RDP", str(e))
@@ -952,9 +998,12 @@ class CIGSApp:
             return
         
         ip = self.infra_panel.tree.item(sel[0])['values'][0]
+        user_esp, pass_esp = self.obter_credenciais_servidor(ip)
         d = self.top_panel.get_data()
         self.db_panel.log(f"Iniciando varredura em {ip}...")
-        threading.Thread(target=self.worker_scan_bancos, args=(ip, d['user'], d['pass'])).start()
+        user_atual = user_esp if user_esp else d['user']
+        pass_atual = pass_esp if pass_esp else d['pass']
+        threading.Thread(target=self.worker_scan_bancos, args=(ip, user_atual, pass_atual)).start()
 
     def worker_scan_bancos(self, ip, user, password):
         r"""
