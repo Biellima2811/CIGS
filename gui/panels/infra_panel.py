@@ -10,36 +10,66 @@ class InfraPanel(ttk.Frame):
         super().__init__(parent)
         # Dicionário de callbacks (funções externas passadas para o painel)
         self.cb = callbacks
+        self._after_id = None
         # Monta a interface gráfica
         self.setup_ui()
 
     def setup_ui(self):
         # Configura a coluna principal para expandir proporcionalmente
         self.columnconfigure(0, weight=1)
-        # Configura a linha 1 (tabela) para expandir
-        self.rowconfigure(1, weight=1)
+        # A linha 2 (treeview) será a que expande verticalmente
+        self.rowconfigure(2, weight=1)
 
-        # Toolbar (barra de ferramentas superior)
+        # --- Toolbar (linha 0) ---
         f_tools = ttk.Frame(self)
         f_tools.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        # Botão para carregar lista de IPs a partir de arquivo TXT
-        ttk.Button(f_tools, text="📂 Lista TXT", command=self.cb['load_ips']).pack(side="left", padx=2)
-        # Botão para carregar lista de servidores dedicados a partir de CSV
-        ttk.Button(f_tools, text="📥 Importar CSV (BD)", command=self.cb['import_csv']).pack(side="left", padx=2)
+        # Configura colunas da toolbar para distribuir os botões
+        f_tools.columnconfigure(0, weight=0)  # botões à esquerda
+        f_tools.columnconfigure(1, weight=0)  # separador
+        f_tools.columnconfigure(2, weight=0)
+        f_tools.columnconfigure(3, weight=0)
+        f_tools.columnconfigure(4, weight=0)
+        f_tools.columnconfigure(5, weight=1)  # espaço flexível
+        f_tools.columnconfigure(6, weight=0)  # botão à direita
 
-        ttk.Separator(f_tools, orient="vertical").pack(side="left", padx=5, fill="y")
-        ttk.Button(f_tools, text="🗄️ Carregar DB", command=self.cb['load_db']).pack(side="left", padx=2)
-        ttk.Button(f_tools, text="➕ Novo Servidor", command=self.cb['add_server']).pack(side="left", padx=2)
+        # Botões à esquerda
+        btn_txt = ttk.Button(f_tools, text="📂 Lista TXT", command=self.cb['load_ips'])
+        btn_txt.grid(row=0, column=0, padx=2, sticky="w")
 
-        # Botão para migrar agente (ação personalizada)
-        ttk.Button(f_tools, text="🛠️ Migrar Agente", command=self.cb['deploy']).pack(side="right", padx=2)
+        btn_csv = ttk.Button(f_tools, text="📥 Importar CSV (BD)", command=self.cb['import_csv'])
+        btn_csv.grid(row=0, column=1, padx=2, sticky="w")
 
-        # Tabela (Treeview) para listar servidores
-        # Selectmode=extended permite múltiplas seleções (Ctrl+Click)
+        sep = ttk.Separator(f_tools, orient="vertical")
+        sep.grid(row=0, column=2, padx=5, sticky="ns")
+
+        btn_db = ttk.Button(f_tools, text="🗄️ Carregar DB", command=self.cb['load_db'])
+        btn_db.grid(row=0, column=3, padx=2, sticky="w")
+
+        btn_add = ttk.Button(f_tools, text="➕ Novo Servidor", command=self.cb['add_server'])
+        btn_add.grid(row=0, column=4, padx=2, sticky="w")
+
+        # Espaço flexível para empurrar o botão de deploy para a direita
+        espaco = ttk.Frame(f_tools)
+        espaco.grid(row=0, column=5, sticky="ew")
+
+        btn_deploy = ttk.Button(f_tools, text="🛠️ Migrar Agente", command=self.cb['deploy'])
+        btn_deploy.grid(row=0, column=6, padx=2, sticky="e")
+
+        # --- Barra de busca (linha 1) ---
+        f_search = ttk.Frame(self)
+        f_search.grid(row=1, column=0, sticky="ew", padx=5, pady=(0,5))
+        f_search.columnconfigure(1, weight=1)  # campo de entrada expande
+
+        ttk.Label(f_search, text="🔍 Buscar:").grid(row=0, column=0, padx=(0,5))
+        self.entry_busca = ttk.Entry(f_search)
+        self.entry_busca.grid(row=0, column=1, sticky="ew")
+        self.entry_busca.bind("<KeyRelease>", self.filtrar_servidores)
+
+        # --- Treeview (linha 2) ---
         cols = ("IP", "Hostname", "IP Pub", "Funcao", "Cliente", "Status", "Info")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="extended")
         
-        # Cabeçalhos das colunas
+        # Cabeçalhos
         self.tree.heading("IP", text="IP")
         self.tree.heading("Hostname", text="Hostname")
         self.tree.heading("IP Pub", text="IP Público")
@@ -48,7 +78,7 @@ class InfraPanel(ttk.Frame):
         self.tree.heading("Status", text="Status")
         self.tree.heading("Info", text="Info")
         
-        # Configuração de largura e alinhamento das colunas
+        # Configuração de largura e alinhamento
         self.tree.column("IP", width=110, anchor="center")
         self.tree.column("Hostname", width=120, anchor="center")
         self.tree.column("IP Pub", width=110, anchor="center")
@@ -57,55 +87,45 @@ class InfraPanel(ttk.Frame):
         self.tree.column("Status", width=90, anchor="center")
         self.tree.column("Info", width=150, anchor="center")
 
-        # Scrollbar vertical para a tabela
+        # Scrollbar vertical
         scrolly = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrolly.set)
         
-        # Posiciona a tabela e a barra de rolagem
-        self.tree.grid(row=1, column=0, sticky="nsew", padx=5)
-        scrolly.grid(row=1, column=1, sticky="ns")
+        # Posiciona treeview e scrollbar na linha 2
+        self.tree.grid(row=2, column=0, sticky="nsew", padx=5)
+        scrolly.grid(row=2, column=1, sticky="ns")
 
-        # Tags para estilizar linhas da tabela conforme status
-        self.tree.tag_configure("ONLINE", background="#dff9fb")   # Azul claro
-        self.tree.tag_configure("OFFLINE", background="#ffcccc")  # Vermelho claro
-        self.tree.tag_configure("SUCESSO", background="#b8e994")  # Verde claro
-        self.tree.tag_configure("CRITICO", background="#e74c3c", foreground="white") # Vermelho forte
-        self.tree.tag_configure("DEDICADO", background="#fff0b3") # Amarelo claro
-        self.tree.tag_configure("CREDENCIAL_PROPRIA", background="#d1f2eb")  # verde água
+        # Tags para estilizar linhas da tabela
+        self.tree.tag_configure("ONLINE", background="#dff9fb")
+        self.tree.tag_configure("OFFLINE", background="#ffcccc")
+        self.tree.tag_configure("SUCESSO", background="#b8e994")
+        self.tree.tag_configure("CRITICO", background="#e74c3c", foreground="white")
+        self.tree.tag_configure("DEDICADO", background="#fff0b3")
+        self.tree.tag_configure("CREDENCIAL_PROPRIA", background="#d1f2eb")
 
         # Menu de contexto (clique direito)
         self.menu = Menu(self, tearoff=0)
-        # Opção para acessar RDP
         self.menu.add_command(label="🖥️ Acessar RDP", command=self.call_rdp)
-        # Opção para copiar IP
         self.menu.add_command(label="📋 Copiar IP", command=self.copy_ip)
-        self.menu.add_separator() # Linha divisória
+        self.menu.add_separator()
         self.menu.add_command(label="✏️ Editar Servidor", command=self.call_edit)
         self.menu.add_command(label="🗑️ Excluir Servidor", command=self.call_delete)
 
-        # Associa o clique direito à função show_menu
         self.tree.bind("<Button-3>", self.show_menu)
 
     def show_menu(self, event):
-        # Identifica a linha clicada com botão direito
         item = self.tree.identify_row(event.y)
         if item:
-            # Se clicou em algo fora da seleção atual, seleciona apenas esse item
-            # Se clicou dentro de um grupo já selecionado, mantém o grupo (útil para ações em lote futuras)
             if item not in self.tree.selection():
                 self.tree.selection_set(item)
-            # Exibe o menu de contexto na posição do clique
             self.menu.post(event.x_root, event.y_root)
 
     def call_rdp(self):
-        # Abre RDP apenas para o primeiro item da seleção
         sel = self.tree.selection()
         if sel:
-            # Pega o IP da primeira linha selecionada e chama o callback 'rdp'
             self.cb['rdp'](self.tree.item(sel[0])['values'][0])
 
     def copy_ip(self):
-        # Copia o IP da primeira linha selecionada para a área de transferência
         sel = self.tree.selection()
         if sel:
             ip = self.tree.item(sel[0])['values'][0]
@@ -123,3 +143,19 @@ class InfraPanel(ttk.Frame):
         if sel:
             ip = self.tree.item(sel[0])['values'][0]
             self.cb['delete_server'](ip)
+
+    def filtrar_servidores(self, event=None):
+        if self._after_id:
+            self.after_cancel(self._after_id)
+        self._after_id = self.after(300, self._aplicar_filtro)
+    
+    def _aplicar_filtro(self):
+        termo = self.entry_busca.get().strip().lower()
+        for item in self.tree.get_children():
+            valores = self.tree.item(item, 'values')
+            texto_item = " ".join(str(v) for v in valores).lower()
+            if termo in texto_item:
+                self.tree.reattach(item, '', 'end')
+            else:
+                self.tree.detach(item)
+        self._after_id = None
