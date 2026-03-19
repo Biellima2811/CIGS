@@ -70,7 +70,7 @@ A comunicação entre Central e Agente é feita via API REST (HTTP), garantindo 
 │ (Tkinter/Themed)│ │ (Serviço Windows)│
 └─────────────────┘ └─────────────────┘
 │ │
-│ (SQLite) │ (Task Scheduler)
+│ (PostgreSQL) │ (Task Scheduler)
 ┌────▼────┐ ┌────▼────┐
 │cigs_data.db│ │Launcher.bat│
 └──────────┘ └──────────┘
