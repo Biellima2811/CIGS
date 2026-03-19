@@ -1,136 +1,149 @@
-# CIGS - Central de Comandos Integrados
-
-**Versão 3.7.3 (Estável)**
-
-O **CIGS** é uma plataforma de orquestração tática para gerenciamento de servidores Windows em massa. Ele permite a atualização remota de sistemas, monitoramento de saúde (hardware/banco de dados), execução de scripts sob demanda, geração de relatórios operacionais e muito mais, tudo através de uma interface gráfica amigável e uma arquitetura cliente-servidor robusta.
-
----
-
-## 📌 Índice
-
-- [Visão Geral](#-visão-eral)
-- [Funcionalidades Principais](#-funcionalidades-principais)
-- [Arquitetura do Sistema](#-arquitetura-do-sistema)
-- [Requisitos de Sistema](#-requisitos-de-sistema)
-- [Instalação e Configuração](#-instalação-e-configuração)
-  - [Central (GUI)](#central-gui)
-  - [Agente (Serviço Windows)](#agente-serviço-windows)
-- [Guia de Uso](#-guia-de-uso)
-  - [Painel Superior – Parâmetros da Missão](#1-painel-superior--parâmetros-da-missão)
-  - [Gerenciamento de Servidores](#2-gerenciamento-de-servidores)
-  - [Scan de Infraestrutura](#3-scan-de-infraestrutura)
-  - [Disparo de Missão (Checklist)](#4-disparo-de-missão-checklist)
-  - [Deploy do Agente](#5-deploy-do-agente)
-  - [Clínica de Banco de Dados](#6-clínica-de-banco-de-dados)
-  - [Dashboard](#7-dashboard)
-  - [Gerador WAR](#8-gerador-war)
-  - [Relatórios e Email](#9-relatórios-e-email)
-- [Compilação](#-compilação)
-  - [Compilar a Central](#compilar-a-central)
-  - [Compilar o Agente (Opcional)](#compilar-o-agente-opcional)
-- [Resolução de Problemas (Troubleshooting)](#-resolução-de-problemas-troubleshooting)
-- [Contribuição e Suporte](#-contribuição-e-suporte)
-- [Licença](#-licença)
-
----
-
-## 🚀 Visão Geral
-
+🚀 Visão Geral
 O CIGS nasceu da necessidade de automatizar e centralizar o processo de atualização de múltiplos sistemas (AC, AG, PONTO, PATRIO) em dezenas de servidores Windows. Ele é dividido em duas partes:
 
-1. **Central (GUI)** – Aplicação desktop que funciona como “comandante”. Permite cadastrar servidores, configurar missões, disparar atualizações, visualizar dashboards e gerar relatórios.
-2. **Agente (Serviço)** – Serviço Windows instalado em cada servidor alvo. Recebe ordens da Central, baixa pacotes, executa scripts e reporta status.
+Central (GUI) – Aplicação desktop que funciona como "comandante". Permite cadastrar servidores, configurar missões, disparar atualizações, visualizar dashboards e gerar relatórios.
+
+Agente (Serviço) – Serviço Windows instalado em cada servidor alvo. Recebe ordens da Central, baixa pacotes, executa scripts e reporta status.
 
 A comunicação entre Central e Agente é feita via API REST (HTTP), garantindo simplicidade e segurança.
 
----
+✨ Funcionalidades Principais
+Gerenciamento completo de servidores – Cadastro manual, importação em massa via CSV (com suporte a credenciais específicas), edição e exclusão diretamente pela interface.
 
-## ✨ Funcionalidades Principais
+Credenciais por servidor – Possibilidade de definir usuário/senha específicos para cada servidor (ideal para máquinas com contas de parceiro diferenciadas). Nas operações (RDP, deploy, missão) o sistema prioriza as credenciais específicas e, caso não existam, usa as credenciais globais do painel superior.
 
-- **Gerenciamento completo de servidores** – Cadastro manual, importação em massa via CSV (com suporte a credenciais específicas), edição e exclusão diretamente pela interface.
-- **Credenciais por servidor** – Possibilidade de definir usuário/senha específicos para cada servidor (ideal para máquinas com contas de parceiro diferenciadas). Nas operações (RDP, deploy, missão) o sistema prioriza as credenciais específicas e, caso não existam, usa as credenciais globais do painel superior.
-- **Scan de infraestrutura** – Verifica online/offline, versão do agente, número de clientes, latência, disco e RAM.
-- **Disparo de missões** – Atualização completa (download + extração) ou apenas execução local. Suporte a múltiplos scripts (`Executa.bat`, `ExecutaOnDemand.bat`) e parâmetros.
-- **Agendamento no Windows** – Cria tarefas no Task Scheduler com nomes padronizados, evitando poluição.
-- **Checklist pré-disparo** – Valida URL, arquivos locais e conectividade antes de iniciar a missão.
-- **Deploy remoto do agente** – Instala/atualiza o serviço CIGS_Agent em lote via rede, agora utilizando as credenciais específicas de cada servidor.
-- **Monitoramento em tempo real** – Dashboard com gráficos de latência e disponibilidade, além de cartões de status coloridos.
-- **Clínica de banco de dados** – Executa diagnósticos e manutenção em Firebird (check, mend, sweep, backup, restore, automático) e MSSQL (checkdb, manutenção completa).
-- **Varredura de bancos de dados** – Localiza automaticamente arquivos .FDB nos servidores (compartilhamentos administrativos), usando as credenciais adequadas.
-- **Gerador WAR** – Cria múltiplos arquivos .war a partir de uma base e uma lista de nomes.
-- **Relatórios completos** – Geração de CSV, envio por email (com anexos) e sincronização com Google Sheets.
-- **Criptografia de credenciais** – Senhas de email armazenadas com segurança usando Fernet; senha mestra para acesso ao sistema (bcrypt + Fernet).
-- **Sanitização automática** – Corrige extrações de .rar que criam subpastas indesejadas.
+Scan de infraestrutura – Verifica online/offline, versão do agente, número de clientes, latência, disco e RAM.
 
----
+Disparo de missões – Atualização completa (download + extração) ou apenas execução local. Suporte a múltiplos scripts (Executa.bat, ExecutaOnDemand.bat) e parâmetros.
 
-## 🏗️ Arquitetura do Sistema
-┌─────────────────┐ HTTP ┌─────────────────┐
-│ CENTRAL GUI │ ───── (JSON) ────▶ │ AGENTE (Flask) │
-│ (Tkinter/Themed)│ │ (Serviço Windows)│
-└─────────────────┘ └─────────────────┘
-│ │
-│ (PostgreSQL) │ (Task Scheduler)
-┌────▼────┐ ┌────▼────┐
-│cigs_data.db│ │Launcher.bat│
-└──────────┘ └──────────┘
-│
-┌────▼────┐
-│Executa.bat│
-└──────────┘
+Agendamento no Windows – Cria tarefas no Task Scheduler com nomes padronizados, evitando poluição.
 
+Checklist pré-disparo – Valida URL, arquivos locais e conectividade antes de iniciar a missão.
+
+Deploy remoto do agente – Instala/atualiza o serviço CIGS_Agent em lote via rede, agora utilizando as credenciais específicas de cada servidor.
+
+Monitoramento em tempo real – Dashboard com gráficos de latência e disponibilidade, além de cartões de status coloridos.
+
+Clínica de banco de dados – Executa diagnósticos e manutenção em Firebird (check, mend, sweep, backup, restore, automático) e MSSQL (checkdb, manutenção completa).
+
+Varredura de bancos de dados – Localiza automaticamente arquivos .FDB nos servidores (compartilhamentos administrativos), usando as credenciais adequadas.
+
+Gerador WAR – Cria múltiplos arquivos .war a partir de uma base e uma lista de nomes.
+
+Relatórios completos – Geração de CSV, envio por email (com anexos) e sincronização com Google Sheets.
+
+Criptografia de credenciais – Senhas de email armazenadas com segurança usando Fernet; senha mestra para acesso ao sistema (bcrypt + Fernet).
+
+Sanitização automática – Corrige extrações de .rar que criam subpastas indesejadas.
+
+🏗️ Arquitetura do Sistema
 text
+┌─────────────────┐    HTTP    ┌─────────────────┐
+│   CENTRAL GUI   │ ──────────▶ │ AGENTE (Flask)  │
+│ (Tkinter/Themed)│  (JSON)     │(Serviço Windows)│
+└─────────────────┘             └─────────────────┘
+         │                              │
+         │ (PostgreSQL)                  │ (Task Scheduler)
+    ┌────▼────┐                    ┌────▼────┐
+    │   cigs_db │                    │Launcher.bat│
+    └──────────┘                    └──────────┘
+                                            │
+                                      ┌────▼────┐
+                                      │Executa.bat│
+                                      └──────────┘
+Central: Gerencia a interface e toda a lógica de negócio. Conecta-se ao PostgreSQL para armazenar servidores, histórico e configurações.
 
-- **Central:** Armazena servidores e histórico em SQLite, comunica-se com os agentes via `requests`.
-- **Agente:** Serviço headless (sem GUI) que expõe uma API Flask. Executa downloads, extrações e agendamentos.
-- **Scripts:** O agente gera um `Launcher_{SISTEMA}.bat` que, quando executado pelo Task Scheduler, chama o script alvo (`Executa.bat` ou `ExecutaOnDemand.bat`) na raiz do sistema.
+Banco de Dados (PostgreSQL): Centraliza os dados de forma segura e performática, permitindo acesso concorrente.
 
----
+Agente: Serviço headless (sem GUI) que expõe uma API Flask. Executa downloads, extrações e agendamentos nos servidores alvo.
 
-## 💻 Requisitos de Sistema
+Scripts: O agente gera um Launcher_{SISTEMA}.bat que, quando executado pelo Task Scheduler, chama o script alvo (Executa.bat ou ExecutaOnDemand.bat) na raiz do sistema.
 
-### Central (máquina do administrador)
-- Windows 10/11 ou Windows Server 2016+
-- Python 3.12 ou superior (para execução em modo script)
-- Dependências Python (listadas em `requirements.txt`)
-- Acesso de rede aos servidores alvo (porta 5580 aberta)
+💻 Requisitos de Sistema
+Central (máquina do administrador)
+Windows 10/11 ou Windows Server 2016+
 
-### Agente (servidores gerenciados)
-- Windows Server 2008 R2 ou superior (recomendado 2012+)
-- Python 3.12 ou superior (se executado como script) ou o executável compilado
-- Porta 5580 liberada no firewall (para comunicação com a Central)
-- Permissão de administrador para instalação como serviço
+Python 3.12 ou superior (para execução em modo script)
 
----
+Dependências Python (listadas em requirements.txt)
 
-## 🔧 Instalação e Configuração
+Acesso de rede aos servidores alvo (porta 5580 aberta)
 
-### Central (GUI)
+Acesso de rede ao servidor de Banco de Dados PostgreSQL (porta padrão 5432)
 
-#### 1. Clone ou baixe o projeto
-```bash
-git clone https://github.com/seu-usuario/cigs.git
-cd cigs
-2. Crie um ambiente virtual (recomendado)
+Banco de Dados (PostgreSQL)
+Um servidor ou instância PostgreSQL 12+ acessível pela rede.
+
+Um banco de dados criado para o CIGS (ex: cigs_db).
+
+Um usuário com privilégios de leitura/escrita nesse banco.
+
+Agente (servidores gerenciados)
+Windows Server 2008 R2 ou superior (recomendado 2012+)
+
+Python 3.12 ou superior (se executado como script) ou o executável compilado
+
+Porta 5580 liberada no firewall (para comunicação com a Central)
+
+Permissão de administrador para instalação como serviço
+
+🔧 Instalação e Configuração
+1. Configurar o Banco de Dados (PostgreSQL)
+Antes de executar a Central, é necessário preparar o banco de dados:
+
+Certifique-se de ter um servidor PostgreSQL em execução e acessível.
+
+Crie um banco de dados para o CIGS:
+
+sql
+CREATE DATABASE cigs_db;
+Crie um usuário e conceda privilégios:
+
+sql
+CREATE USER cigs_user WITH PASSWORD 'sua_senha_forte';
+GRANT ALL PRIVILEGES ON DATABASE cigs_db TO cigs_user;
+2. Central (GUI)
+Clone ou baixe o projeto
+bash
+git clone https://github.com/Biellima2811/CIGS.git
+cd CIGS
+Crie um ambiente virtual (recomendado)
 bash
 python -m venv venv
 venv\Scripts\activate
-3. Instale as dependências
+Instale as dependências
 bash
 pip install -r requirements.txt
-4. Configure o banco de dados
-O banco SQLite (cigs_data.db) será criado automaticamente na primeira execução. Opcionalmente, você pode copiar um banco existente.
+Nota: O requirements.txt foi atualizado para incluir o psycopg2-binary (driver do PostgreSQL).
 
-5. Execute a Central
+Configure a conexão com o banco de dados
+Na primeira execução, a Central solicitará as configurações de conexão com o PostgreSQL:
+
+Host: Endereço do servidor PostgreSQL (ex: localhost ou 192.168.1.100)
+
+Porta: Geralmente 5432
+
+Nome do Banco: O nome que você criou (ex: cigs_db)
+
+Usuário: cigs_user
+
+Senha: A senha definida para o usuário
+
+Essas configurações serão salvas em um arquivo config.ini para uso futuro. O sistema criará automaticamente as tabelas necessárias ao conectar.
+
+Execute a Central
 bash
 python main.py
 Na primeira execução, será solicitada a criação de uma senha mestra. Utilize-a para acessar o sistema posteriormente.
 
-6. (Opcional) Compile a Central para distribuição
+(Opcional) Compile a Central para distribuição
 Veja a seção Compilação.
 
-Agente (Serviço Windows)
+3. Agente (Serviço Windows)
+O processo de instalação do agente nos servidores gerenciados não se altera com a migração do banco de dados. Utilize os mesmos métodos:
+
 Método 1 – Instalação manual
+
 Copie a pasta cigs_core para o servidor, em C:\CIGS\cigs_core.
 
 Coloque os utilitários nssm.exe e UnRAR.exe em C:\CIGS.
@@ -169,13 +182,13 @@ Fonte: Nuvem (download) ou Rede Local (cópia de executável).
 2. Gerenciamento de Servidores
 Lista TXT: Carrega IPs de um arquivo texto simples.
 
-Importar CSV: Importa servidores em massa. O template agora inclui as colunas UsuarioEspecifico e SenhaEspecifica. Exemplo:
+Importar CSV: Importa servidores em massa. O template inclui as colunas UsuarioEspecifico e SenhaEspecifica. Exemplo:
 
 text
 IP;Hostname;IP_Publico;Funcao;Cliente;UsuarioEspecifico;SenhaEspecifica
 192.168.1.50;SRV-APP01;200.1.1.50;APP;Cliente Exemplo;;
 192.168.1.51;SRV-BD01;200.1.1.51;BD;Cliente Exemplo;fortes\admin;senha123
-Carregar DB: Recarrega a lista a partir do banco SQLite.
+Carregar DB: Recarrega a lista a partir do banco PostgreSQL.
 
 Novo Servidor: Cadastro manual, com campos opcionais para usuário/senha específicos.
 
@@ -222,8 +235,7 @@ Ao autorizar, a missão é agendada no Windows de cada servidor (as credenciais 
 Dica: Use ☢️ DISPARAR EM TODOS para selecionar todos os servidores de uma vez.
 
 5. Deploy do Agente
-Clique em 🛠️ Migrar Agente no painel de infraestrutura.
-A Central copiará os arquivos (CIGS_Agent.exe, nssm.exe, Instalar_CIGS.bat, UnRAR.exe) para cada servidor e executará a instalação remota via WMIC, utilizando as credenciais específicas de cada servidor (fallback para as globais). O progresso é mostrado na barra e no log.
+Clique em 🛠️ Migrar Agente no painel de infraestrutura. A Central copiará os arquivos (CIGS_Agent.exe, nssm.exe, Instalar_CIGS.bat, UnRAR.exe) para cada servidor e executará a instalação remota via WMIC, utilizando as credenciais específicas de cada servidor (fallback para as globais). O progresso é mostrado na barra e no log.
 
 6. Clínica de Banco de Dados
 Selecione o motor (Firebird ou MSSQL).
@@ -242,27 +254,17 @@ Gráfico de Pizza: Disponibilidade atual (online vs offline).
 Monitoramento em Tempo Real: Cartões coloridos mostrando status atual de cada servidor (atualize com o botão 🔄). As credenciais específicas são usadas para a consulta de status.
 
 8. Gerador WAR
-Selecione um arquivo de nomes (.txt, um nome por linha), um arquivo base .war e uma pasta de destino.
-
-Clique em Gerar Cópias para criar múltiplos arquivos .war (cada um com o nome da lista).
+Selecione um arquivo de nomes (.txt, um nome por linha), um arquivo base .war e uma pasta de destino. Clique em Gerar Cópias para criar múltiplos arquivos .war (cada um com o nome da lista).
 
 9. Relatórios e Email
-Clique em 📊 Ver Relatório.
-
-A Central coleta dados de execução de todos os servidores online e gera um CSV.
-
-Se configurado, envia o relatório por email com estatísticas detalhadas e anexos (CSV e log).
-
-Opcionalmente, sincroniza com uma planilha do Google Sheets (necessário credenciais.json).
-
-Para configurar o email, vá em Config > Email e preencha as credenciais SMTP.
+Clique em 📊 Ver Relatório. A Central coleta dados de execução de todos os servidores online e gera um CSV. Se configurado, envia o relatório por email com estatísticas detalhadas e anexos (CSV e log). Opcionalmente, sincroniza com uma planilha do Google Sheets (necessário credenciais.json). Para configurar o email, vá em Config > Email e preencha as credenciais SMTP.
 
 🛠️ Compilação
 Compilar a Central
-Use o PyInstaller para gerar um executável único:
+Use o PyInstaller para gerar um executável único (com suporte ao PostgreSQL):
 
 bash
-pyinstaller --noconsole --onefile --clean --noconfirm --noupx --name="CIGS_Central_v3.7.3" --icon="assets/CIGS.ico" --collect-all ttkthemes --collect-all cryptography --collect-all matplotlib --collect-all tkcalendar --collect-all PIL main.py
+pyinstaller --noconsole --onefile --clean --noconfirm --noupx --name="CIGS_Central_v3.7.3.2" --icon="assets/CIGS.ico" --collect-all ttkthemes --collect-all cryptography --collect-all matplotlib --collect-all tkcalendar --collect-all PIL --collect-all psycopg2 main.py
 Arquivos que devem estar na mesma pasta do executável (ou na pasta de distribuição):
 
 nssm.exe
@@ -273,7 +275,7 @@ Instalar_CIGS.bat
 
 CIGS_Agent.exe (ou a pasta cigs_core com o script e dependências)
 
-cigs_data.db (opcional, será criado se não existir)
+config.ini (será gerado na primeira execução)
 
 CIGS.key (será gerado na primeira execução)
 
@@ -288,6 +290,7 @@ O resultado estará na pasta CIGS_Agent.dist. Copie o conteúdo para C:\CIGS nos
 
 🐛 Resolução de Problemas (Troubleshooting)
 Sintoma	Causa Provável	Solução
+Erro de conexão com o banco na inicialização	Configurações do PostgreSQL incorretas ou servidor inacessível	Verifique o arquivo config.ini. Teste a conexão usando um cliente como pgAdmin ou psql.
 Central não inicia	Conflito de layout (Pack vs Grid)	Verifique se todos os widgets usam apenas grid() ou apenas pack().
 Agente não responde	Serviço parado ou porta bloqueada	Execute sc query CIGS_Service no servidor. Libere a porta 5580 no firewall.
 Erro "Script não encontrado"	Caminho do script incorreto	Verifique se Executa.bat está na raiz do sistema (ex: C:\Atualiza\CloudUp\CloudUpCmd\AC).
@@ -297,12 +300,15 @@ Extrações criam subpastas	Sanitização não executada	Verifique se o --saniti
 Email não enviado	Credenciais SMTP incorretas ou porta bloqueada	Use a função Testar na janela de configuração de email.
 Dashboard sem dados	Nenhum scan realizado	Execute um scan completo primeiro.
 Servidor com credenciais próprias não usa‑as	Lógica não implementada na operação	Verifique se a função obter_credenciais_servidor(ip) está sendo chamada na rotina (ex: no worker_deploy, worker_disparo, etc.). Todas as operações principais já foram adaptadas.
+Falha ao compilar com PyInstaller (psycopg2)	O driver não foi incluído no executável	Use a flag --collect-all psycopg2 no comando do PyInstaller.
 🤝 Contribuição e Suporte
 Desenvolvido por: Gabriel Levi · Fortes Tecnologia
 Ano: 2026
-Versão Atual: 3.7.3
+Versão Atual: 3.7.3.2
 
 Issues e sugestões: Abra uma issue no repositório oficial ou entre em contato com a equipe de infraestrutura.
 
-
 Contribuições: Pull requests são bem-vindos! Por favor, siga as boas práticas de código e documente as alterações.
+
+⚖️ Licença
+Este projeto é proprietário e de uso interno da Fortes Tecnologia.
