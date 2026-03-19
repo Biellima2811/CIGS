@@ -44,29 +44,19 @@ class CIGSApp:
     Classe principal da aplicação CIGS
     """
     
-    def __init__(self, root):
+    def __init__(self, root, usuario="Operador", nivel="tecnico"):
         self.root = root
-        # Dentro de __init__, após criar self.security
-        self.auth_ok = False
+        # Recebemos as credenciais vindas do login do PostgreSQL
+        self.usuario_logado = usuario
+        self.nivel_acesso = nivel
+        self.auth_ok = True
 
         self.db = CIGSDatabase() 
         self.core = CIGSCore()
         self.sheets = CIGSSheets()
         self.security = CIGSSecurity()
         self.email_manager = CIGSEmailManager(self.security)
-        
-        # Verifica se já existe senha mestra configurada
-        if not os.path.exists(self.security.ARQUIVO_SENHA):
-            # Primeira execução: solicitar criação da senha
-            self._criar_senha_mestra()
-        else:
-             # Já configurado: solicitar login
-            self._fazer_login()
-        
-        if not self.auth_ok:
-            root.destroy()
-            return
-        
+                
         self.monitor_active = False 
         self.setup_window()
         self.setup_sidebar_layout() 
@@ -144,7 +134,7 @@ class CIGSApp:
     
     def setup_window(self):
         """Configura as propriedades da janela principal"""
-        self.root.title("CIGS - Central de Comandos Integrados Versão 3.7.3 (Estavel)")
+        self.root.title("CIGS - Central de Comandos Integrados Versão 3.7.3.2 (Estavel)")
         self.root.geometry("1280x850")
         try: self.root.state('zoomed')
         except: pass
@@ -220,6 +210,17 @@ class CIGSApp:
 
         self.war_panel = WarGeneratorPanel(self.container, self.log_visual, self.update_progress)
         self.pages["war"] = self.war_panel
+
+        if self.nivel_acesso == 'admin':
+            self.btn_users = tk.Button(self.frame_sidebar, text="👥  GESTÃO USUÁRIOS", 
+                                      command=lambda: self.show_page("users"), **btn_style)
+            self.btn_users.pack(fill="x", pady=2)
+            
+            # Cria o container visual da aba
+            self.users_panel = tk.Frame(self.container, bg="#ecf0f1")
+            self.pages["users"] = self.users_panel
+            self.users_panel.grid(row=0, column=0, sticky="nsew")
+            self.montar_aba_usuarios()
 
         # Posiciona todos os painéis no mesmo grid
         for p in self.pages.values(): 
@@ -376,6 +377,11 @@ class CIGSApp:
     
     def deletar_servidor(self, ip):
         """Confirma e remove o servidor do banco de dados"""
+        # Verificação de Patente
+        if getattr(self, 'nivel_acesso', 'tecnico') != 'admin':
+            messagebox.showerror("Acesso Negado", "Negativo, Operador! Apenas o Comandante (Admin) pode excluir servidores do banco.")
+            return
+        
         resposta = messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja remover o servidor {ip}?")
         if resposta:
             self.db.remover_servidor(ip)
@@ -1458,15 +1464,43 @@ class CIGSApp:
             
         except Exception as e:
             self.log_visual(f"❌ Erro ao enviar email: {e}")
-
-
-
-
-
-
-
-
-
-
-
     
+    def montar_aba_usuarios(self):
+        """Constrói a interface de gestão de técnicos e administradores"""
+        p = self.users_panel
+        tk.Label(p, text="CENTRAL DE COMANDO - GESTÃO DE ACESSO", font=("Arial", 16, "bold"), bg="#ecf0f1").pack(pady=20)
+        
+        # Frame de Cadastro
+        f_cad = tk.LabelFrame(p, text="Cadastrar Novo Operador", padx=20, pady=20)
+        f_cad.pack(padx=20, fill="x")
+        
+        tk.Label(f_cad, text="Login:").grid(row=0, column=0, sticky="w")
+        ent_user = tk.Entry(f_cad, width=30)
+        ent_user.grid(row=0, column=1, padx=10, pady=5)
+        
+        tk.Label(f_cad, text="Senha:").grid(row=1, column=0, sticky="w")
+        ent_pass = tk.Entry(f_cad, width=30, show="*")
+        ent_pass.grid(row=1, column=1, padx=10, pady=5)
+        
+        tk.Label(f_cad, text="Patente:").grid(row=2, column=0, sticky="w")
+        combo_role = ttk.Combobox(f_cad, values=["tecnico", "admin"], state="readonly", width=27)
+        combo_role.current(0)
+        combo_role.grid(row=2, column=1, padx=10, pady=5)
+        
+        def salvar():
+            u, s, r = ent_user.get().strip(), ent_pass.get().strip(), combo_role.get()
+            if not u or not s:
+                messagebox.showerror("Erro", "Preencha todos os campos!")
+                return
+            sucesso, msg = self.db.criar_usuario(u, s, r)
+            if sucesso:
+                messagebox.showinfo("Sucesso", f"Operador {u} cadastrado com a patente {r}!")
+                ent_user.delete(0, tk.END); ent_pass.delete(0, tk.END)
+            else:
+                messagebox.showerror("Erro", msg)
+
+        tk.Button(f_cad, text="CADASTRAR OPERADOR", bg="#27ae60", fg="white", 
+                  font=("Arial", 10, "bold"), command=salvar, padx=20).grid(row=3, column=0, columnspan=2, pady=15)
+        
+        tk.Label(p, text="Dica: Operadores com patente 'tecnico' não podem excluir servidores ou gerenciar outros usuários.", 
+                 fg="gray", bg="#ecf0f1").pack(pady=10)

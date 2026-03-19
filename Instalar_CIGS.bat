@@ -21,7 +21,7 @@ if %errorLevel% == 0 (
 :: ==========================================
 :: Define a pasta C:\CIGS como raiz fixa para evitar erros
 set "ROOT_DIR=C:\CIGS"
-set "EXE_PATH=%ROOT_DIR%\CIGS_Agent.dist\CIGS_Agent.exe"
+set "EXE_PATH=%ROOT_DIR%\CIGS_Agent.exe"
 set "NSSM=%ROOT_DIR%\nssm.exe"
 
 echo.
@@ -104,5 +104,5 @@ echo ==========================================
 echo      INSTALACAO CONCLUIDA COM SUCESSO
 echo ==========================================
 echo.
-echo Teste o acesso agora: http://localhost:5578/cigs/status
+echo Teste o acesso agora: http://localhost:5580/cigs/status
 echo.

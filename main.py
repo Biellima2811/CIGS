@@ -12,6 +12,9 @@ from ttkthemes import ThemedTk
 # Importa a classe principal da aplicação CIGS
 from gui.main_window import CIGSApp
 
+# Importa a Tela de Login (A Portaria do Quartel)
+from gui.login_window import LoginWindow
+
 
 # Bloco padrão de execução principal em Python
 if __name__ == "__main__":
@@ -20,33 +23,54 @@ if __name__ == "__main__":
     Aqui iniciamos a interface gráfica e a janela principal
     """
     
-    # Tenta criar uma janela com tema "radiance" do ttkthemes
-    try:
-        #root = ThemedTk(theme="arc")  # Tema alternativo comentado
-        root = ThemedTk(theme="radiance")  # Usa tema "radiance" (claro/azulado)
-    except:
-        """
-        Bloco de fallback: caso ocorra algum erro na criação da janela temática
-        Isso pode acontecer se:
-        1. A biblioteca ttkthemes não estiver instalada
-        2. O tema "radiance" não estiver disponível no sistema
-        3. Problemas de compatibilidade com a versão do Tkinter
+    # ==========================================
+    # 🛡️ FASE 1: A PORTARIA (TELA DE LOGIN)
+    # ==========================================
+    login_app = LoginWindow()
+    login_app.mainloop() # Pausa o código aqui até o cara logar ou fechar a janela
+
+    # ==========================================
+    # 🚀 FASE 2: VERIFICAÇÃO DE ACESSO
+    # ==========================================
+    if login_app.autenticado:
+        print(f"Acesso concedido: {login_app.usuario_logado} | Patente: {login_app.nivel_acesso}")
         
-        Nesse caso, usamos a janela padrão do tkinter (sem tema especial)
-        """
-        root = tk.Tk()  # Cria janela tkinter padrão (fallback)
-        root.withdraw() # Esconde a janela cinza vazia
+        # Tenta criar uma janela com tema "radiance" do ttkthemes
+        try:
+            #root = ThemedTk(theme="arc")  # Tema alternativo comentado
+            root = ThemedTk(theme="radiance")  # Usa tema "radiance" (claro/azulado)
+        except:
+            """
+            Bloco de fallback: caso ocorra algum erro na criação da janela temática
+            Isso pode acontecer se:
+            1. A biblioteca ttkthemes não estiver instalada
+            2. O tema "radiance" não estiver disponível no sistema
+            3. Problemas de compatibilidade com a versão do Tkinter
+            
+            Nesse caso, usamos a janela padrão do tkinter (sem tema especial)
+            """
+            root = tk.Tk()  # Cria janela tkinter padrão (fallback)
+            root.withdraw() # Esconde a janela cinza vazia
+            
+        # Instancia a aplicação CIGS passando a janela raiz como parâmetro
+        app = CIGSApp(root, login_app.usuario_logado, login_app.nivel_acesso)
         
-    # Instancia a aplicação CIGS passando a janela raiz como parâmetro
-    app = CIGSApp(root)
-    
-    try:
-        if root.winfo_exists():
-            root.deiconify()
-            root.mainloop()
-    except tk.TclError:
-        # Janela já foi destruída (autenticação falhou)
-        pass
+        # 💉 INJEÇÃO MILITAR: Passamos a patente do usuário para dentro do sistema
+        # Assim o CIGSApp vai saber quem está operando e poderá bloquear botões
+        app.usuario_logado = login_app.usuario_logado
+        app.nivel_acesso = login_app.nivel_acesso
+        
+        try:
+            if root.winfo_exists():
+                root.deiconify()
+                root.mainloop()
+        except tk.TclError:
+            # Janela já foi destruída (autenticação falhou ou erro interno)
+            pass
+            
+    else:
+        # Se o cara errar a senha ou fechar a janela de login no "X", o sistema morre aqui.
+        print("Acesso abortado. O painel principal não será iniciado.")
 
 # Fluxo de Execução:
 # -----------------
