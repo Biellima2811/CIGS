@@ -385,3 +385,21 @@ class CIGSCore:
             pass
         
         return "%d/%m/%Y"  # fallback seguro
+    
+    def enviar_ordem_descomentar(self, ip, sistema):
+        try:
+            r = requests.post(f"http://{ip}:{self.PORTA_AGENTE}/cigs/descomentar", json={"sistema": sistema}, timeout=15)
+            if r.status_code == 200:
+                resp = r.json()
+                return (True, resp.get('detalhe')) if resp.get('resultado') == "SUCESSO" else (False, resp.get('detalhe'))
+        except Exception as e: return False, str(e)
+        return False, "Erro de Conexão"
+
+    def enviar_ordem_limpeza(self, ip, sistema):
+        try:
+            r = requests.post(f"http://{ip}:{self.PORTA_AGENTE}/cigs/limpar_logs", json={"sistema": sistema}, timeout=15)
+            if r.status_code == 200:
+                resp = r.json()
+                return (True, resp.get('detalhe')) if resp.get('resultado') == "SUCESSO" else (False, resp.get('detalhe'))
+        except Exception as e: return False, str(e)
+        return False, "Erro de Conexão"

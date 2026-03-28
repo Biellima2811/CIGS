@@ -18,6 +18,8 @@ from .database import executar_check_banco
 
 # Importa tarefas executadas pelo agente
 from .tasks import agendar_tarefa_universal, analisar_relatorio_deploy, cancelar_missao, sanitizar_extracao
+from .tasks import descomentar_clientes_ini
+from .tasks import limpar_logs_cloudup
 
 # Cria a aplicação Flask
 app = Flask(__name__)
@@ -129,6 +131,18 @@ def abortar():
 
     # Retorna para a central que a missão foi abortada
     return jsonify({"resultado": "ABORTADO", "detalhe": res})
+
+@app.route('/cigs/descomentar', methods=['POST'])
+def api_descomentar():
+    sis = request.json.get('sistema', 'AC')
+    suc, msg = descomentar_clientes_ini(sis)
+    return jsonify({'resultado': 'SUCESSO' if suc else 'ERRO', 'detalhe': msg})
+
+@app.route('/cigs/limpar_logs', methods=['POST'])
+def api_limpar_logs():
+    sis = request.json.get('sistema', 'AC')
+    suc, msg = limpar_logs_cloudup(sis)
+    return jsonify({"resultado": "SUCESSO" if suc else "ERRO", "detalhe": msg})
 
 # Função que inicia o servidor Flask
 def iniciar_servidor():

@@ -54,6 +54,59 @@ def sanitizar_extracao(destino):
         # Loga qualquer falha que ocorrer durante o processo
         log_debug(f"Erro na sanitizacao: {e}")
 
+# ==========================================
+# NOVAS FUNÇÕES: MANUTENÇÃO E LIMPEZA
+# ==========================================
+def descomentar_clientes_ini(sistema):
+    """Procura linhas começando com ;customer e remove o ponto e vírgula"""
+    pasta_raiz = MAPA_RAIZ.get(sistema.upper())
+    if not pasta_raiz:
+        return False, 'Sistema não mapeado'
+    
+    ini_path = os.path.join(pasta_raiz, 'config.ini')
+    if not os.path.exists(ini_path):
+        return False, 'config,ini não encontrado'
+    
+    try:
+        with open(ini_path, 'r', encoding='utf-8') as f:
+            linhas = f.readlines()
+        
+        alterado = False
+        for i, linha in enumerate(linhas):
+            linhas[i] = linha.lstrip('; \t')
+            alterado = True
+        if alterado:
+            with open(ini_path, 'w', encoding='utf-8') as f:
+                f.writelines(linhas)
+            return True, 'Clientes descomentados com sucesso!'
+        return True, 'Nenhum cliente estava comentado.'
+    except Exception as e:
+        return False, f'Erro: {str(e)}'
+    
+def limpar_logs_cloudup(sistema):
+    """Apaga arquivos antigos de log da pasta do sistema"""
+    pasta_raiz = MAPA_RAIZ.get(sistema.upper())
+    if not pasta_raiz:
+        return False, 'Sistema não mapeado'
+    
+    padroes = ["StatusBackup_*", "ServersLog_*", "LogEmail_*", "KillLog_*"]
+    removidos = 0
+
+    try:
+        for padrao in padroes:
+            caminhos = glob.glob(os.path.join(pasta_raiz, padrao))
+            for arquivo in caminhos:
+                try:
+                    os.remove(arquivo)
+                    removidos += 1
+                except: pass
+        return True, f'{removidos} arquivos de log removidos!'
+    except Exception as e:
+        return False, f'Erro: {str(e)}'
+
+# ==========================================
+# FUNÇÃO PRINCIPAL DE AGENDAMENTO E CÓPIA
+# ==========================================
 def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start_in, sistema, modo, script_nome="Executa.bat", script_args=""):
     # Log inicial
     log_debug(f"--- Missao: {sistema} | Script: {script_nome} ---", sistema)
@@ -107,12 +160,41 @@ def agendar_tarefa_universal(url, nome_arquivo, data_hora, usuario, senha, start
             if len(items) == 1 and os.path.isdir(os.path.join(temp_extract, items[0])):
                 source_folder = os.path.join(temp_extract, items[0])
                 log_debug(f"Subpasta detectada ({items[0]}). Ajustando origem.", sistema)
+            
+            # Identifica o diretório pai (ex: C:\Atualiza\CloudUp\CloudUpCmd\AC\Atualizadores)
+            base_atualizadores = os.path.dirname(pasta_destino)
+            pasta_alvo = []
+            if os.path.exists(base_atualizadores):
+                for item in os.listdir(base_atualizadores):
+                    caminho_completo = os.path.join(base_atualizadores, item)
+                    # Se for pasta e começar com o nome do sistema (ex: AC, AC1, AC_CONTABIL)
+                    if os.path.isdir(caminho_completo) and item.upper().startswith(sistema.upper()):
+                        pasta_alvo.append(caminho_completo)
 
-            log_debug(f"Movendo arquivos para: {pasta_destino}", sistema)
-            cmd_copy = f'xcopy "{source_folder}\\*" "{pasta_destino}\\" /E /H /C /I /Y'
-            subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL)
+            # Fallback caso não ache nada, usa o destino original
+            if not pasta_alvo:
+                pasta_alvo = [pasta_destino]
 
+            arquivos_na_origem = sum([len(files) for r, d, files in os.walk(source_folder)])
+            log_debug(f'Total de arquivos extraidos identificados: {arquivos_na_origem}', sistema)
+
+
+            # Dispara a cópia par todas as pastas encontradas
+            for alvo in pasta_alvo:
+                log_debug(f"Copiando arquivos para: {alvo}", sistema)
+                # O Robocopy (/E copia subpastas, /IS inclui arquivos iguais que foram modificados, /NFL /NDL esconde logs desnecessários)
+                cmd_copy = f'robocopy "{source_folder}" "{alvo}" /E /IS /NFL /NDL /NJH /NJS'
+                subprocess.run(cmd_copy, shell=True, stdout=subprocess.DEVNULL)
+
+                # Verificação de Integridade
+                arquivos_no_alvo = sum([len(files) for r, d, files in os.walk(alvo)])
+                if arquivos_no_alvo >= arquivos_na_origem:
+                    log_debug(f"[✅ CHECKLIST] Integridade confirmada no destino: {alvo}", sistema)
+                else:
+                    log_debug(f"[⚠️ ALERTA] Possivel falta de arquivos! Origem: {arquivos_na_origem}, Destino: {arquivos_no_alvo}", sistema)
+            
             shutil.rmtree(temp_extract, ignore_errors=True)
+            
             try:
                 os.remove(caminho_rar)
             except:
@@ -165,24 +247,49 @@ exit
     
         task_name = f"CIGS_Update_{sistema.upper()}"
     
-        # Usa o usuário e senha fornecidos se ambos estiverem preenchidos; caso contrário, usa SYSTEM
-        if usuario and senha:
-            cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
-        else:
-            cmd_sch = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
+        # Monta as duas versoes do comando (Com Usuario e com SYSTEM)
+        cmd_sch_user = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru "{usuario}" /rp "{senha}" /rl HIGHEST /f'
+        cmd_sch_sys = f'schtasks /create /tn "{task_name}" /tr "{bat_path}" /sc ONCE /sd {d_str} /st {h_str} /ru SYSTEM /rl HIGHEST /f'
     
-        res = subprocess.run(cmd_sch, shell=True, capture_output=True, text=True)
+        # Decide qual tentar primeiro
+        if usuario and senha:
+            cmd_primario = cmd_sch_user
+        else:
+            cmd_primario = cmd_sch_sys
+            
+        res = subprocess.run(cmd_primario, shell=True, capture_output=True, text=True)
+    
+        # --- LÓGICA DE FALLBACK (PLANO B) ---
+        # Se falhou, e foi com um usuario especifico, vamos testar qual foi o erro
+        if res.returncode != 0 and (usuario and senha):
+            erro_bruto = res.stderr.lower() if res.stderr else res.stdout.lower()
+            if "mapeamento" in erro_bruto or "mapping" in erro_bruto or "logon" in erro_bruto:
+                log_debug(f"Aviso: Conta não mapeada/Logon falhou. Ativando Plano B (SYSTEM)...", sistema)
+                # Tenta forçar novamente usando o comando do SYSTEM
+                res = subprocess.run(cmd_sch_sys, shell=True, capture_output=True, text=True)
+                usuario = "SYSTEM" # Atualiza a variável para o log final registrar corretamente
+        # ------------------------------------
     
         if res.returncode == 0:
             log_debug(f"Agendamento realizado com SUCESSO: {task_name} com usuário {usuario if usuario else 'SYSTEM'}", sistema)
             return True, "Agendado"
         else:
-            log_debug(f"Erro Schtasks: {res.stderr}", sistema)
-            return False, f"Erro Task: {res.stderr}"
+            # --- NOVO: TRADUTOR DE ERROS DO SCHTASKS ---
+            erro_bruto = res.stderr.lower() if res.stderr else res.stdout.lower()
+            
+            if "logon failure" in erro_bruto or "falha de logon" in erro_bruto:
+                erro_amigavel = "Erro de Logon: Usuário ou Senha incorretos."
+            elif "access is denied" in erro_bruto or "acesso negado" in erro_bruto:
+                erro_amigavel = "Acesso Negado: Faltam privilégios de Administrador."
+            elif "batch job" in erro_bruto or "trabalho em lotes" in erro_bruto:
+                erro_amigavel = "Erro de GPO: O usuário não tem permissão de 'Logon como trabalho em lotes'."
+            else:
+                erro_amigavel = f"Falha ({res.returncode}): Verifique o log do Agente."
+                
+            log_debug(f"Erro Task Original: {erro_bruto}", sistema)
+            return False, erro_amigavel
     except Exception as e:
         return False, str(e)
-
-
 
 def analisar_log_backup(sistema, data_alvo=None):
     # Obtém pasta raiz do sistema

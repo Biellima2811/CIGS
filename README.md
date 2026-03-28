@@ -304,9 +304,9 @@ Email não enviado	Credenciais SMTP incorretas ou porta bloqueada	Use a função
 Dashboard sem dados	Nenhum scan realizado	Execute um scan completo primeiro.
 Servidor com credenciais próprias não usa‑as	Lógica não implementada na operação	Verifique se a função obter_credenciais_servidor(ip) está sendo chamada na rotina (ex: no worker_deploy, worker_disparo, etc.). Todas as operações principais já foram adaptadas.
 🤝 Contribuição e Suporte
-Desenvolvido por: Gabriel Levi · 
+Desenvolvido por: Gabriel Levi · Fortes Tecnologia
 Ano: 2026
-Versão Atual: 3.7.3.2
+Versão Atual: 3.7.3
 
 Issues e sugestões: Abra uma issue no repositório oficial ou entre em contato com a equipe de infraestrutura.
 

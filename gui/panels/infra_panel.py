@@ -65,6 +65,12 @@ class InfraPanel(ttk.Frame):
         self.entry_busca.grid(row=0, column=1, sticky="ew")
         self.entry_busca.bind("<KeyRelease>", self.filtrar_servidores)
 
+        ttk.Label(f_search, text='Visão: ').grid(row=0, column=2, padx=(10,2))
+        self.var_visao = tk.StringVar(value='Todos')
+        cb_visao = ttk.Combobox(f_search, textvariable= self.var_visao, values=['Todos', 'Dedicados','Compartilhados'], state='readonly', width=20)
+        cb_visao.grid(row=0, column=3, padx=5)
+        cb_visao.bind("<<ComboboxSelected>>", self.filtrar_servidores)
+
         # --- Treeview (linha 2) ---
         cols = ("IP", "Hostname", "IP Pub", "Funcao", "Cliente", "Status", "Info")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="extended")
@@ -85,15 +91,22 @@ class InfraPanel(ttk.Frame):
         self.tree.column("Funcao", width=80, anchor="center")
         self.tree.column("Cliente", width=200, anchor="center")
         self.tree.column("Status", width=90, anchor="center")
-        self.tree.column("Info", width=150, anchor="center")
+        self.tree.column("Info", width=300,minwidth=150, anchor="center")
 
         # Scrollbar vertical
         scrolly = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrolly.set)
         
+        # Scrollbar horizontal
+        scrollx = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(xscrollcommand=scrollx.set)
+        
         # Posiciona treeview e scrollbar na linha 2
         self.tree.grid(row=2, column=0, sticky="nsew", padx=5)
         scrolly.grid(row=2, column=1, sticky="ns")
+        
+        # barra horizontal na linha 3 (abaixo da tabela)
+        scrollx.grid(row=3, column=0, sticky="ew", padx=5)
 
         # Tags para estilizar linhas da tabela
         self.tree.tag_configure("ONLINE", background="#dff9fb")
@@ -108,6 +121,12 @@ class InfraPanel(ttk.Frame):
         self.menu.add_command(label="🖥️ Acessar RDP", command=self.call_rdp)
         self.menu.add_command(label="📋 Copiar IP", command=self.copy_ip)
         self.menu.add_separator()
+
+        # --- NOVOS BOTÕES DE MANUTENÇÃO ---
+        self.menu.add_command(label="📝 Descomentar config.ini", command=self.call_descomentar)
+        self.menu.add_command(label="🧹 Limpar Logs Antigos", command=self.call_limpar)
+        self.menu.add_separator()
+
         self.menu.add_command(label="✏️ Editar Servidor", command=self.call_edit)
         self.menu.add_command(label="🗑️ Excluir Servidor", command=self.call_delete)
 
@@ -151,11 +170,40 @@ class InfraPanel(ttk.Frame):
     
     def _aplicar_filtro(self):
         termo = self.entry_busca.get().strip().lower()
+        visao = self.var_visao.get() # Pega o valor do novo Combobox
+
         for item in self.tree.get_children():
             valores = self.tree.item(item, 'values')
+            tags = self.tree.item(item, 'tags')
             texto_item = " ".join(str(v) for v in valores).lower()
-            if termo in texto_item:
+            
+            # Logica do Filtro Visão
+            passa_visao = True
+            if visao == 'Dedicados' and 'DEDICADO' not in tags:
+                passa_visao = False
+            elif visao == "Compartilhados" and "DEDICADO" in tags:
+                # Assumindo que quem não tem a tag "DEDICADO" é compartilhado
+                passa_visao = False
+            
+            # Logica do Termo de busca
+            passa_busca = termo in texto_item
+
+            if passa_visao and passa_busca:
+                
                 self.tree.reattach(item, '', 'end')
             else:
                 self.tree.detach(item)
         self._after_id = None
+
+    
+    def call_descomentar(self):
+        sel = self.tree.selection()
+        if sel:
+            ips = [self.tree.item(i)['values'][0] for i in sel]
+            self.cb['descomentar'](ips)
+
+    def call_limpar(self):
+        sel = self.tree.selection()
+        if sel:
+            ips = [self.tree.item(i)['values'][0] for i in sel]
+            self.cb['limpar'](ips)

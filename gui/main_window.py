@@ -134,7 +134,7 @@ class CIGSApp:
     
     def setup_window(self):
         """Configura as propriedades da janela principal"""
-        self.root.title("CIGS - Central de Comandos Integrados Versão 3.7.3.2 (Estavel)")
+        self.root.title("CIGS - Central de Comandos Integrados Versão 4.0")
         self.root.geometry("1280x850")
         try: self.root.state('zoomed')
         except: pass
@@ -195,7 +195,9 @@ class CIGSApp:
             'load_db': self.carregar_servidores_db,
             'add_server': self.abrir_add_server,
             'edit_server': self.abrir_edit_server,   # NOVO
-            'delete_server': self.deletar_servidor   # NOVO
+            'delete_server': self.deletar_servidor, # NOVO
+            'descomentar': self.btn_descomentar_massa, # NOVO
+            'limpar': self.btn_limpar_massa
         })
         self.pages["infra"] = self.infra_panel
         
@@ -346,7 +348,7 @@ class CIGSApp:
             self.infra_panel.tree.delete(*self.infra_panel.tree.get_children())
             
             for s in servidores:
-                tags = ("DEDICADO",)
+                tags = ()
                 if s.get('usuario_especifico'):
                     tags = ("DEDICADO", "CREDENCIAL_PROPRIA")
                 self.infra_panel.tree.insert("", "end", values=(
@@ -506,6 +508,32 @@ class CIGSApp:
             
         except Exception as e:
             messagebox.showerror("Erro Crítico", f"Falha ao ler arquivo: {str(e)}")
+    
+    def btn_descomentar_massa(self, ips):
+        if messagebox.askyesno('Confirma!', f'Descomentar config.ini em {len(ips)} servidores?'):
+            threading.Thread(target=self.worker_manutencao, args=('DESCOMENTAR', ips)).start()
+
+    def btn_limpar_massa(self, ips):
+        if messagebox.askyesno("Confirmar", f"Limpar logs antigos em {len(ips)} servidores?"):
+            threading.Thread(target=self.worker_manutencao, args=("LIMPAR", ips)).start()
+
+    def worker_manutencao(self, acao, ips):
+        sis = self.top_panel.get_data()['sistema']
+        for ip in ips:
+            if acao == "DESCOMENTAR":
+                suc, msg = self.core.enviar_ordem_descomentar(ip, sis)
+                self.log_visual(f"📝 {ip}: {msg}")
+            else:
+                suc, msg = self.core.enviar_ordem_limpeza(ip, sis)
+                self.log_visual(f"🧹 {ip}: {msg}")
+            
+            # Atualiza a coluna "Info" da tabela com o resultado
+            for item in self.infra_panel.tree.get_children():
+                if self.infra_panel.tree.item(item)['values'][0] == ip:
+                    valores = list(self.infra_panel.tree.item(item)['values'])
+                    while len(valores) < 7: valores.append("-")
+                    valores[6] = msg
+                    self.root.after(0, lambda id=item, v=valores: self.infra_panel.tree.item(id, values=v))
 
     # ==========================================
     # MONITORAMENTO
@@ -578,6 +606,9 @@ class CIGSApp:
             
             self.log_visual(f"[{i}/{total}] 🔍 {ip} ({hostname})...")
             inicio = time.time()
+
+            tags_atuais = self.infra_panel.tree.item(item).get('tags', [])
+            foi_agendado = "SUCESSO" in tags_atuais
             
             try:
                 res = self.core.checar_status_agente(ip, sis, full=False)
@@ -605,6 +636,14 @@ class CIGSApp:
                     if str(cliente_atual) in ["-", "", "0", "None", "?", "N/A"] and ref_cliente not in ["-", "", "N/A"]:
                         cliente_atual = ref_cliente
                         self.log_visual(f"   ↳ Cliente atualizado: {cliente_atual}")
+                    
+                    # LÓGICA DE MANUTENÇÃO DE COR E STATUS
+                    if foi_agendado:
+                        tag = "SUCESSO" # Mantém a linha verde
+                        info_extra = f"[✅ AGENDADO] v{versao} | {tempo}ms"
+                    else:
+                        tag = "ONLINE"
+                        info_extra = f"v{versao} | Disk: {disk_gb}GB | RAM: {ram_perc}%"
                     
                     self.log_visual(f"   ✅ ONLINE | Clientes: {qtd_clientes} | Ref: {ref_cliente} | Versão: {versao} | {tempo}ms")
                 else:
@@ -1408,7 +1447,7 @@ class CIGSApp:
         """Exibe janela 'Sobre'"""
         messagebox.showinfo("CIGS", 
                            "Central de Comandos Integrados\n"
-                           "Versão 3.7.3 (Estavel)\n"
+                           "Versão 4.0\n"
                            "Desenvolvido por Gabriel Levi\n"
                            "Fortes Tecnologia - 2026")
     
